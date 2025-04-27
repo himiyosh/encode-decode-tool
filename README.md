@@ -16,12 +16,3 @@ This is a web-based tool for encoding and decoding text in various formats such 
 ## Live Demo
 
 You can access the live version of this tool on GitHub Pages: [https://himiyosh.github.io/encode-decode-tool/](https://himiyosh.github.io/encode-decode-tool/)
-
-## Getting Started
-
-Follow these steps to set up and run the project locally.
-
-### Prerequisites
-
-- Node.js (v16 or later)
-- npm (comes with Node.js)
