@@ -1,6 +1,6 @@
 # Encode / Decode Tool
 
-This is a web-based tool for encoding and decoding text in various formats such as URL, Base64, JWT, and Unicode. The application is built using React, Tailwind CSS, and Vite.
+This is a web-based tool for encoding and decoding text in various formats such as URL, Base64, JWT, Unicode and QRcode. The application is built using React, Tailwind CSS, and Vite.
 
 ## Features
 
@@ -9,6 +9,7 @@ This is a web-based tool for encoding and decoding text in various formats such 
   - Base64
   - JWT
   - Unicode
+  - QRcode
 - Copy the output to the clipboard with a single click.
 - Responsive design with a modern UI.
 
