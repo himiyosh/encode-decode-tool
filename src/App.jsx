@@ -51,6 +51,22 @@ const App = () => {
   );
 };
 
+// Base64url エンコード
+const base64urlEncode = str =>
+  btoa(unescape(encodeURIComponent(str)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+
+// Base64url デコード
+const base64urlDecode = str => {
+  str = str.replace(/-/g, '+').replace(/_/g, '/');
+  while (str.length % 4) {
+    str += '=';
+  }
+  return decodeURIComponent(escape(atob(str)));
+};
+
 const TabContent = ({ type }) => {
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
@@ -71,9 +87,9 @@ const TabContent = ({ type }) => {
         case 'JWT':
           try {
             const { header, payload } = JSON.parse(input);
-            const h = btoa(unescape(encodeURIComponent(JSON.stringify(header))));
-            const p = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
-            res = `${h}.${p}.<signature>`;
+            const h = base64urlEncode(JSON.stringify(header));
+            const p = base64urlEncode(JSON.stringify(payload));
+            res = `${h}.${p}.`;
           } catch {
             res = 'Invalid JSON format. Provide {"header":..., "payload":...}';
           }
@@ -101,10 +117,10 @@ const TabContent = ({ type }) => {
           res = input.split(' ').map(code => String.fromCharCode(+code)).join('');
           break;
         case 'JWT':
-          const parts = input.split('.');
+          const parts = input.trim().split('.');
           if (parts.length < 2) throw new Error();
-          const hd = JSON.parse(decodeURIComponent(escape(atob(parts[0]))));
-          const pl = JSON.parse(decodeURIComponent(escape(atob(parts[1]))));
+          const hd = JSON.parse(base64urlDecode(parts[0]));
+          const pl = JSON.parse(base64urlDecode(parts[1]));
           res = JSON.stringify({ header: hd, payload: pl, signature: parts[2] || '' }, null, 2);
           break;
         default:
