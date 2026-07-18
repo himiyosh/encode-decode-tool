@@ -1,0 +1,14 @@
+{
+  "date": "2026-07-18",
+  "framework": "React 18, Vite 4, Tailwind CSS 3",
+  "fontStack": "Local system UI stacks only",
+  "palette": "Fixed dark Tailwind gray with indigo and green actions",
+  "motion": "Framer Motion 10",
+  "spacing": "Tailwind utility scale",
+  "preserve": [
+    "Static GitHub Pages build",
+    "Browser-local processing",
+    "React and Vite architecture",
+    "Dark product surface"
+  ]
+}
