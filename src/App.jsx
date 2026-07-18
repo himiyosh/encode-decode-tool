@@ -1,9 +1,10 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Check, ChevronRight, Copy, Download, RefreshCw } from 'lucide-react';
 import QRCode from 'qrcode';
 import jsQR from 'jsqr';
 
 const tabs = ['URL', 'Base64', 'JWT', 'Unicode', 'QR'];
+const MAX_QR_IMAGE_BYTES = 10 * 1024 * 1024;
 
 const formatMeta = {
   URL: {
@@ -224,6 +225,11 @@ const TabContent = ({ type, hidden }) => {
   const meta = formatMeta[type];
   const id = type.toLowerCase();
 
+  useEffect(
+    () => () => window.clearTimeout(copyResetTimer.current),
+    [],
+  );
+
   const handleInputChange = event => {
     const nextInput = event.target.value;
     setInput(nextInput);
@@ -385,6 +391,11 @@ function QRCodeTab({ hidden }) {
   const canvasRef = useRef(null);
   const copyResetTimer = useRef();
 
+  useEffect(
+    () => () => window.clearTimeout(copyResetTimer.current),
+    [],
+  );
+
   const generateQR = async () => {
     setGenerating(true);
     setStatus({ tone: 'loading', message: 'Generating QR code…' });
@@ -404,14 +415,23 @@ function QRCodeTab({ hidden }) {
   };
 
   const onFileChange = e => {
-    const file = e.target.files?.[0];
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
       setStatus({
         tone: 'error',
         message: 'That file is not an image. Choose a PNG, JPEG, GIF, or WebP image.',
       });
-      e.target.value = '';
+      input.value = '';
+      return;
+    }
+    if (file.size > MAX_QR_IMAGE_BYTES) {
+      setStatus({
+        tone: 'error',
+        message: 'That image is larger than 10 MB. Choose a smaller image.',
+      });
+      input.value = '';
       return;
     }
 
@@ -424,7 +444,7 @@ function QRCodeTab({ hidden }) {
       img.onload = () => {
         try {
           const canvas = canvasRef.current;
-          const context = canvas?.getContext('2d');
+          const context = canvas?.getContext('2d', { willReadFrequently: true });
           if (!canvas || !context) throw new Error('canvas-unavailable');
           canvas.width = img.width;
           canvas.height = img.height;
@@ -463,7 +483,7 @@ function QRCodeTab({ hidden }) {
       });
     };
     reader.readAsDataURL(file);
-    e.target.value = '';
+    input.value = '';
   };
 
   const copyDecoded = async () => {

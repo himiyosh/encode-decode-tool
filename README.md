@@ -11,7 +11,12 @@ This is a web-based tool for encoding and decoding text in various formats such 
   - Unicode
   - QRcode
 - Copy the output to the clipboard with a single click.
+- Download generated QR codes and decode QR images without uploading them.
+- Use the format tabs, transform controls, and file picker with a keyboard.
 - Responsive design with a modern UI.
+
+All text transformations and QR image processing run locally in the browser. The
+tool does not upload entered text, generated QR codes, or selected images.
 
 ## Live Demo
 
