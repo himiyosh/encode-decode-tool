@@ -418,6 +418,9 @@ function QRCodeTab({ hidden }) {
     const input = e.currentTarget;
     const file = input.files?.[0];
     if (!file) return;
+    setDecoded('');
+    setCopyState('idle');
+
     if (!file.type.startsWith('image/')) {
       setStatus({
         tone: 'error',
@@ -435,8 +438,6 @@ function QRCodeTab({ hidden }) {
       return;
     }
 
-    setDecoded('');
-    setCopyState('idle');
     setStatus({ tone: 'loading', message: 'Reading the QR image locally…' });
     const reader = new FileReader();
     reader.onload = () => {
@@ -534,11 +535,14 @@ function QRCodeTab({ hidden }) {
             placeholder="Text or URL"
             value={text}
             onChange={event => {
-              setText(event.target.value);
+              const nextText = event.target.value;
+              setText(nextText);
               setStatus({
                 tone: 'idle',
-                message: event.target.value
-                  ? 'Ready to generate.'
+                message: nextText
+                  ? imgSrc
+                    ? 'Text changed. Generate again to update the QR code.'
+                    : 'Ready to generate.'
                   : 'Enter text to enable QR generation.',
               });
             }}
