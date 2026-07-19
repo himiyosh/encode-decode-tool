@@ -13,10 +13,20 @@ This is a web-based tool for encoding and decoding text in various formats such 
 - Copy the output to the clipboard with a single click.
 - Download generated QR codes and decode QR images without uploading them.
 - Use the format tabs, transform controls, and file picker with a keyboard.
+- Reject malformed Base64, Unicode, and JWT input instead of returning plausible
+  output; JWT assembly is limited to explicit unsecured (`alg: "none"`) tokens.
+- Keep previous results visible for comparison while preventing stale one-click
+  copy or QR download after the source changes.
 - Responsive design with a modern UI.
 
 All text transformations and QR image processing run locally in the browser. The
 tool does not upload entered text, generated QR codes, or selected images.
+
+## Development
+
+- `npm test` runs the dependency-free transform and QR safety tests.
+- `npm run build` creates the GitHub Pages site in `docs/`.
+- `npm run check:customizations` validates the project agent and Hallmark files.
 
 ## Live Demo
 

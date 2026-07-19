@@ -1,10 +1,16 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, ChevronRight, Copy, Download, RefreshCw } from 'lucide-react';
-import QRCode from 'qrcode';
-import jsQR from 'jsqr';
+import { getQrCanvasSize } from './qr-image.mjs';
+import { decodeValue, encodeValue } from './transforms.mjs';
 
 const tabs = ['URL', 'Base64', 'JWT', 'Unicode', 'QR'];
 const MAX_QR_IMAGE_BYTES = 10 * 1024 * 1024;
+const SUPPORTED_QR_IMAGE_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]);
 
 const formatMeta = {
   URL: {
@@ -22,9 +28,9 @@ const formatMeta = {
   JWT: {
     inputLabel: 'JWT JSON or compact token',
     inputHint:
-      'Encode {"header": {...}, "payload": {...}} or decode a compact token. Decoding does not verify its signature or authenticity.',
+      'Assemble an unsecured token with header.alg set to "none", or decode a compact token. Decoding never verifies its signature or authenticity.',
     placeholder: '{"header":{"alg":"none"},"payload":{"sub":"123"}}',
-    outputLabel: 'Decoded JWT structure',
+    outputLabel: 'JWT result',
   },
   Unicode: {
     inputLabel: 'Text or Unicode code points',
@@ -101,93 +107,6 @@ const App = () => {
   );
 };
 
-const base64urlEncode = str =>
-  btoa(unescape(encodeURIComponent(str)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
-
-const base64urlDecode = str => {
-  str = str.replace(/-/g, '+').replace(/_/g, '/');
-  while (str.length % 4) {
-    str += '=';
-  }
-  return decodeURIComponent(escape(atob(str)));
-};
-
-const encodeValue = (type, input) => {
-  switch (type) {
-    case 'URL':
-      return encodeURIComponent(input);
-    case 'Base64':
-      return btoa(unescape(encodeURIComponent(input)));
-    case 'Unicode':
-      return Array.from(input)
-        .map(character => character.codePointAt(0))
-        .join(' ');
-    case 'JWT': {
-      const parsed = JSON.parse(input);
-      if (
-        !parsed ||
-        typeof parsed !== 'object' ||
-        !parsed.header ||
-        typeof parsed.header !== 'object' ||
-        Array.isArray(parsed.header) ||
-        !parsed.payload ||
-        typeof parsed.payload !== 'object' ||
-        Array.isArray(parsed.payload)
-      ) {
-        throw new Error('invalid-jwt-json');
-      }
-      const header = base64urlEncode(JSON.stringify(parsed.header));
-      const payload = base64urlEncode(JSON.stringify(parsed.payload));
-      return `${header}.${payload}.`;
-    }
-    default:
-      return '';
-  }
-};
-
-const decodeValue = (type, input) => {
-  switch (type) {
-    case 'URL':
-      return decodeURIComponent(input);
-    case 'Base64':
-      return decodeURIComponent(escape(atob(input)));
-    case 'Unicode': {
-      const tokens = input.trim().split(/\s+/);
-      const codePoints = tokens.map(token => Number(token));
-      const malformed = tokens.some((token, index) => {
-        const codePoint = codePoints[index];
-        return (
-          !/^\d+$/.test(token) ||
-          !Number.isSafeInteger(codePoint) ||
-          codePoint < 0 ||
-          codePoint > 0x10ffff ||
-          (codePoint >= 0xd800 && codePoint <= 0xdfff)
-        );
-      });
-      if (malformed) throw new Error('invalid-code-point');
-      return codePoints.map(codePoint => String.fromCodePoint(codePoint)).join('');
-    }
-    case 'JWT': {
-      const parts = input.trim().split('.');
-      if (parts.length !== 3 || !parts[0] || !parts[1]) {
-        throw new Error('invalid-jwt');
-      }
-      const header = JSON.parse(base64urlDecode(parts[0]));
-      const payload = JSON.parse(base64urlDecode(parts[1]));
-      return JSON.stringify(
-        { header, payload, signature: parts[2] || '' },
-        null,
-        2,
-      );
-    }
-    default:
-      return '';
-  }
-};
-
 const getTransformError = (type, action) => {
   if (type === 'URL') {
     return 'That text is not valid percent-encoded content. Check incomplete % sequences and try again.';
@@ -196,12 +115,14 @@ const getTransformError = (type, action) => {
     return 'That value is not valid UTF-8 Base64. Check its characters and padding, then try again.';
   }
   if (type === 'Unicode') {
-    return 'Use decimal Unicode code points from 0 to 1114111, separated by spaces.';
+    return action === 'encode'
+      ? 'That text contains an unmatched Unicode surrogate and cannot be encoded without changing it.'
+      : 'Use decimal Unicode code points from 0 to 1114111, separated by spaces.';
   }
   if (type === 'JWT' && action === 'encode') {
-    return 'Use JSON with object-valued "header" and "payload" properties.';
+    return 'Use JSON with object-valued "header" and "payload" properties, and set header.alg to "none". This tool does not sign tokens.';
   }
-  return 'That compact token could not be decoded. Check its header and payload segments.';
+  return 'That compact token is malformed. Check its object-valued header and payload, algorithm, and Base64URL signature segment.';
 };
 
 const getSuccessMessage = (type, action) => {
@@ -221,6 +142,7 @@ const TabContent = ({ type, hidden }) => {
     message: 'Enter text to enable the transformation actions.',
   });
   const [copyState, setCopyState] = useState('idle');
+  const [outputSource, setOutputSource] = useState('');
   const copyResetTimer = useRef();
   const meta = formatMeta[type];
   const id = type.toLowerCase();
@@ -234,13 +156,16 @@ const TabContent = ({ type, hidden }) => {
     const nextInput = event.target.value;
     setInput(nextInput);
     setCopyState('idle');
+    const nextOutputIsStale = Boolean(output && nextInput !== outputSource);
     setStatus({
-      tone: 'idle',
-      source: 'input',
+      tone: nextOutputIsStale ? 'warning' : output ? 'success' : 'idle',
+      source: nextOutputIsStale || !output ? 'input' : 'result',
       message: nextInput
-        ? output
+        ? nextOutputIsStale
           ? 'Input changed. Transform again to update the output.'
-          : 'Ready to transform.'
+          : output
+            ? 'Output matches the current input and is ready to copy.'
+            : 'Ready to transform.'
         : 'Enter text to enable the transformation actions.',
     });
   };
@@ -250,6 +175,7 @@ const TabContent = ({ type, hidden }) => {
       const result =
         action === 'encode' ? encodeValue(type, input) : decodeValue(type, input);
       setOutput(result);
+      setOutputSource(input);
       setStatus({
         tone: 'success',
         source: 'result',
@@ -257,6 +183,7 @@ const TabContent = ({ type, hidden }) => {
       });
     } catch {
       setOutput('');
+      setOutputSource('');
       setStatus({
         tone: 'error',
         source: 'input',
@@ -286,6 +213,7 @@ const TabContent = ({ type, hidden }) => {
     }
   };
 
+  const outputIsStale = Boolean(output && input !== outputSource);
   const inputInvalid = status.tone === 'error' && status.source === 'input';
 
   return (
@@ -338,7 +266,7 @@ const TabContent = ({ type, hidden }) => {
           type="button"
           className="action-button action-button--tertiary copy-button"
           onClick={handleCopy}
-          disabled={!output}
+          disabled={!output || outputIsStale}
           data-state={copyState}
         >
           {copyState === 'copied' ? (
@@ -370,6 +298,7 @@ const TabContent = ({ type, hidden }) => {
           rows={5}
           placeholder="Output appears here"
           aria-describedby={`${id}-status`}
+          data-stale={outputIsStale ? 'true' : undefined}
         />
       </div>
     </section>
@@ -381,6 +310,7 @@ export default App;
 function QRCodeTab({ hidden }) {
   const [text, setText] = useState('');
   const [imgSrc, setImgSrc] = useState('');
+  const [generatedText, setGeneratedText] = useState('');
   const [decoded, setDecoded] = useState('');
   const [status, setStatus] = useState({
     tone: 'idle',
@@ -390,27 +320,49 @@ function QRCodeTab({ hidden }) {
   const [copyState, setCopyState] = useState('idle');
   const canvasRef = useRef(null);
   const copyResetTimer = useRef();
+  const decodeRequestId = useRef(0);
+  const generateRequestId = useRef(0);
+  const textRef = useRef('');
 
   useEffect(
-    () => () => window.clearTimeout(copyResetTimer.current),
+    () => () => {
+      window.clearTimeout(copyResetTimer.current);
+      decodeRequestId.current += 1;
+      generateRequestId.current += 1;
+    },
     [],
   );
 
   const generateQR = async () => {
+    const sourceText = text;
+    const requestId = ++generateRequestId.current;
     setGenerating(true);
     setStatus({ tone: 'loading', message: 'Generating QR code…' });
     try {
-      const url = await QRCode.toDataURL(text, { width: 240, margin: 2 });
+      const { default: QRCode } = await import('qrcode');
+      const url = await QRCode.toDataURL(sourceText, { width: 240, margin: 2 });
+      if (requestId !== generateRequestId.current) return;
       setImgSrc(url);
-      setStatus({ tone: 'success', message: 'QR code generated and ready to download.' });
+      setGeneratedText(sourceText);
+      const generatedIsStale = sourceText !== textRef.current;
+      setStatus({
+        tone: generatedIsStale ? 'warning' : 'success',
+        message: generatedIsStale
+          ? 'Text changed while the QR code was generated. Generate again before downloading.'
+          : 'QR code generated and ready to download.',
+      });
     } catch {
+      if (requestId !== generateRequestId.current) return;
       setImgSrc('');
+      setGeneratedText('');
       setStatus({
         tone: 'error',
         message: 'The QR code could not be generated. Check the text and try again.',
       });
     } finally {
-      setGenerating(false);
+      if (requestId === generateRequestId.current) {
+        setGenerating(false);
+      }
     }
   };
 
@@ -418,10 +370,11 @@ function QRCodeTab({ hidden }) {
     const input = e.currentTarget;
     const file = input.files?.[0];
     if (!file) return;
+    const requestId = ++decodeRequestId.current;
     setDecoded('');
     setCopyState('idle');
 
-    if (!file.type.startsWith('image/')) {
+    if (!SUPPORTED_QR_IMAGE_TYPES.has(file.type)) {
       setStatus({
         tone: 'error',
         message: 'That file is not an image. Choose a PNG, JPEG, GIF, or WebP image.',
@@ -441,16 +394,26 @@ function QRCodeTab({ hidden }) {
     setStatus({ tone: 'loading', message: 'Reading the QR image locally…' });
     const reader = new FileReader();
     reader.onload = () => {
+      if (requestId !== decodeRequestId.current) return;
       const img = new Image();
-      img.onload = () => {
+      img.onload = async () => {
+        if (requestId !== decodeRequestId.current) return;
         try {
           const canvas = canvasRef.current;
           const context = canvas?.getContext('2d', { willReadFrequently: true });
           if (!canvas || !context) throw new Error('canvas-unavailable');
-          canvas.width = img.width;
-          canvas.height = img.height;
-          context.drawImage(img, 0, 0);
-          const imageData = context.getImageData(0, 0, img.width, img.height);
+          const canvasSize = getQrCanvasSize(img.naturalWidth, img.naturalHeight);
+          canvas.width = canvasSize.width;
+          canvas.height = canvasSize.height;
+          context.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
+          const imageData = context.getImageData(
+            0,
+            0,
+            canvasSize.width,
+            canvasSize.height,
+          );
+          const { default: jsQR } = await import('jsqr');
+          if (requestId !== decodeRequestId.current) return;
           const code = jsQR(imageData.data, imageData.width, imageData.height);
           if (!code?.data) {
             setStatus({
@@ -461,15 +424,21 @@ function QRCodeTab({ hidden }) {
           }
           setDecoded(code.data);
           setStatus({ tone: 'success', message: 'QR code decoded locally.' });
-        } catch {
+        } catch (error) {
+          if (requestId !== decodeRequestId.current) return;
           setDecoded('');
           setStatus({
             tone: 'error',
-            message: 'The image could not be read. Try another image file.',
+            message:
+              error instanceof Error &&
+              error.message === 'image-dimensions-too-large'
+                ? 'That image has too many pixels to process safely. Choose an image under 24 megapixels.'
+                : 'The image could not be read. Try another image file.',
           });
         }
       };
       img.onerror = () => {
+        if (requestId !== decodeRequestId.current) return;
         setStatus({
           tone: 'error',
           message: 'The image could not be opened. Try another image file.',
@@ -478,11 +447,13 @@ function QRCodeTab({ hidden }) {
       img.src = reader.result;
     };
     reader.onerror = () => {
+      if (requestId !== decodeRequestId.current) return;
       setStatus({
         tone: 'error',
         message: 'The browser could not read that file. Choose it again or try another image.',
       });
     };
+
     reader.readAsDataURL(file);
     input.value = '';
   };
@@ -502,6 +473,8 @@ function QRCodeTab({ hidden }) {
       });
     }
   };
+
+  const qrIsStale = Boolean(imgSrc && text !== generatedText);
 
   return (
     <section
@@ -536,12 +509,22 @@ function QRCodeTab({ hidden }) {
             value={text}
             onChange={event => {
               const nextText = event.target.value;
+              textRef.current = nextText;
               setText(nextText);
+              const nextQrIsStale = Boolean(
+                imgSrc && nextText !== generatedText,
+              );
               setStatus({
-                tone: 'idle',
+                tone: nextQrIsStale
+                  ? 'warning'
+                  : imgSrc && nextText === generatedText
+                    ? 'success'
+                    : 'idle',
                 message: nextText
                   ? imgSrc
-                    ? 'Text changed. Generate again to update the QR code.'
+                    ? nextQrIsStale
+                      ? 'Text changed. Generate again before downloading this QR code.'
+                      : 'This QR code matches the current text and is ready to download.'
                     : 'Ready to generate.'
                   : 'Enter text to enable QR generation.',
               });
@@ -561,20 +544,31 @@ function QRCodeTab({ hidden }) {
           <span>{generating ? 'Generating…' : 'Generate QR'}</span>
         </button>
 
-        <div className="qr-preview" aria-live="polite">
+        <div
+          className="qr-preview"
+          aria-live="polite"
+          data-stale={qrIsStale ? 'true' : undefined}
+        >
           {imgSrc ? (
-            <img
-              src={imgSrc}
-              alt="Generated QR code"
-              width="240"
-              height="240"
-            />
+            <>
+              <img
+                src={imgSrc}
+                alt={
+                  qrIsStale
+                    ? 'Generated QR code, out of date with the current text'
+                    : 'Generated QR code'
+                }
+                width="240"
+                height="240"
+              />
+              {qrIsStale && <span className="stale-badge">Out of date</span>}
+            </>
           ) : (
             <p>Generated QR appears here.</p>
           )}
         </div>
 
-        {imgSrc && (
+        {imgSrc && !qrIsStale && (
           <a
             href={imgSrc}
             download="qr-code.png"
