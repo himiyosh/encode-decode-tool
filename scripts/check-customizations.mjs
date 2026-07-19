@@ -4,7 +4,34 @@ import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
-const AGENT_PATH = join(ROOT, '.github/agents/EncodeDecodeAgent.agent.md');
+const AGENTS_ROOT = join(ROOT, '.github/agents');
+const AGENT_PROFILES = [
+  {
+    file: 'EncodeDecodeAgent.agent.md',
+    name: 'EncodeDecodeAgent',
+    required: [
+      '.github/skills/hallmark/SKILL.md',
+      '**default**',
+      '**audit**',
+      '**redesign**',
+      '**study**',
+      'npm run build',
+      'npm run check:customizations',
+    ],
+  },
+  {
+    file: 'PlayfulWorkbenchAgent.agent.md',
+    name: 'PlayfulWorkbenchAgent',
+    required: [
+      '.github/skills/hallmark/SKILL.md',
+      'references/genres/playful.md',
+      'references/themes/hum.md',
+      'prefers-reduced-motion',
+      'npm run verify',
+      'npm run check:customizations',
+    ],
+  },
+];
 const HALLMARK_ROOT = join(ROOT, '.github/skills/hallmark');
 const SKILL_PATH = join(HALLMARK_ROOT, 'SKILL.md');
 const REFERENCES_ROOT = join(HALLMARK_ROOT, 'references');
@@ -54,6 +81,39 @@ function parseProfile(source) {
     frontmatter,
     prompt: source.slice(delimiter + '\n---\n'.length),
   };
+}
+
+function validateAgent(source, profile) {
+  const agent = parseProfile(source);
+  check(
+    agent.frontmatter.name === profile.name,
+    `${profile.name} name is invalid`,
+  );
+  check(
+    typeof agent.frontmatter.description === 'string' &&
+      agent.frontmatter.description.trim(),
+    `${profile.name} description must be non-empty`,
+  );
+  check(
+    agent.frontmatter['user-invocable'] === true,
+    `${profile.name} must be user-invocable`,
+  );
+
+  const promptCharacters = Array.from(agent.prompt).length;
+  const profileBytes = Buffer.byteLength(source);
+  check(
+    promptCharacters < MAX_PROMPT_CHARACTERS,
+    `${profile.name} prompt exceeds ${MAX_PROMPT_CHARACTERS} characters`,
+  );
+  check(
+    profileBytes < MAX_PROFILE_BYTES,
+    `${profile.name} profile exceeds ${MAX_PROFILE_BYTES} bytes`,
+  );
+  for (const required of profile.required) {
+    check(source.includes(required), `${profile.name} must retain "${required}"`);
+  }
+
+  return { name: profile.name, promptCharacters, profileBytes };
 }
 
 async function exists(path) {
@@ -163,46 +223,31 @@ async function validateParity(upstreamRoot, localCanonicalFiles) {
 }
 
 async function main() {
-  const [agentSource, skillSource, licenseBytes, upstreamSource, readmeSource] =
+  const [skillSource, licenseBytes, upstreamSource, readmeSource] =
     await Promise.all([
-      readFile(AGENT_PATH, 'utf8'),
       readFile(SKILL_PATH, 'utf8'),
       readFile(LICENSE_PATH),
       readFile(UPSTREAM_PATH, 'utf8'),
       readFile(README_PATH, 'utf8'),
     ]);
 
-  const agent = parseProfile(agentSource);
-  check(agent.frontmatter.name === 'EncodeDecodeAgent', 'agent name is invalid');
+  const agentFiles = (await readdir(AGENTS_ROOT))
+    .filter(file => file.endsWith('.agent.md'))
+    .sort();
+  const expectedAgentFiles = AGENT_PROFILES.map(profile => profile.file).sort();
   check(
-    typeof agent.frontmatter.description === 'string' &&
-      agent.frontmatter.description.trim(),
-    'agent description must be non-empty',
-  );
-  check(agent.frontmatter['user-invocable'] === true, 'agent must be user-invocable');
-
-  const promptCharacters = Array.from(agent.prompt).length;
-  const profileBytes = Buffer.byteLength(agentSource);
-  check(
-    promptCharacters < MAX_PROMPT_CHARACTERS,
-    `agent prompt exceeds ${MAX_PROMPT_CHARACTERS} characters`,
-  );
-  check(
-    profileBytes < MAX_PROFILE_BYTES,
-    `agent profile exceeds ${MAX_PROFILE_BYTES} bytes`,
+    JSON.stringify(agentFiles) === JSON.stringify(expectedAgentFiles),
+    `agent inventory mismatch: expected ${expectedAgentFiles.join(', ')}`,
   );
 
-  for (const required of [
-    '.github/skills/hallmark/SKILL.md',
-    '**default**',
-    '**audit**',
-    '**redesign**',
-    '**study**',
-    'npm run build',
-    'npm run check:customizations',
-  ]) {
-    check(agentSource.includes(required), `agent must retain "${required}"`);
-  }
+  const agentResults = await Promise.all(
+    AGENT_PROFILES.map(async profile =>
+      validateAgent(
+        await readFile(join(AGENTS_ROOT, profile.file), 'utf8'),
+        profile,
+      ),
+    ),
+  );
 
   const skill = parseProfile(skillSource);
   check(skill.frontmatter.name === 'hallmark', 'Hallmark name is invalid');
@@ -267,6 +312,10 @@ async function main() {
     'README must discover the primary agent',
   );
   check(
+    readmeSource.includes('](.github/agents/PlayfulWorkbenchAgent.agent.md)'),
+    'README must discover the playful agent',
+  );
+  check(
     readmeSource.includes('](.github/skills/hallmark/SKILL.md)'),
     'README must link to Hallmark',
   );
@@ -274,9 +323,11 @@ async function main() {
   check(!(await exists(join(HALLMARK_ROOT, 'site'))), 'Hallmark site must not be vendored');
 
   const links = await validateMarkdownLinks(canonicalFiles);
-  console.log(
-    `OK: EncodeDecodeAgent prompt=${promptCharacters} characters, profile=${profileBytes} bytes`,
-  );
+  for (const result of agentResults) {
+    console.log(
+      `OK: ${result.name} prompt=${result.promptCharacters} characters, profile=${result.profileBytes} bytes`,
+    );
+  }
   console.log(
     `OK: Hallmark ${EXPECTED_VERSION}, ${canonicalFiles.length} files/${canonicalBytes} bytes, ${links.checked} links (${links.upstreamOnly} upstream-only)`,
   );

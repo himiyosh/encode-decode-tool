@@ -39,6 +39,7 @@ You can access the live version of this tool on GitHub Pages: [https://himiyosh.
 ## GitHub Copilot customization
 
 - Select `EncodeDecodeAgent` ([profile](.github/agents/EncodeDecodeAgent.agent.md)) for end-to-end project work.
+- Select `PlayfulWorkbenchAgent` ([profile](.github/agents/PlayfulWorkbenchAgent.agent.md)) when the workbench needs expressive color, purposeful motion, playful interaction, or visual polish without weakening correctness, privacy, security, or accessibility.
 - UI creation, improvement, read-only audit, explicit redesign, and design study are routed through [Hallmark](.github/skills/hallmark/SKILL.md) while repository correctness, security, privacy, accessibility, responsive behavior, and QA remain authoritative.
 - Hallmark 1.1.0 is vendored from `nutlope/hallmark` commit `aeb42fb354ff4efa36ab475773a082315a3af2ce`; see [UPSTREAM.md](.github/skills/hallmark/UPSTREAM.md) and the included MIT [LICENSE](.github/skills/hallmark/LICENSE).
 - Run `npm run check:customizations` to validate discovery, frontmatter, profile size, references, attribution, and vendored scope.

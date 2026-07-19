@@ -20,9 +20,10 @@ feedback for invalid or unverified data.
 
 ## Brand Personality
 
-Precise, calm, and trustworthy. The interface should feel like a dependable
-workbench: direct enough for repeated technical use, approachable for occasional
-users, and explicit about privacy and security boundaries.
+Precise, lively, and trustworthy. The interface should feel like a dependable
+workbench with a playful pulse: direct enough for repeated technical use,
+approachable for occasional users, responsive to each action, and explicit about
+privacy and security boundaries.
 
 ## Anti-references
 
@@ -41,6 +42,8 @@ users, and explicit about privacy and security boundaries.
 3. Preserve user context across format changes and provide immediate state feedback.
 4. Prefer familiar semantic controls over novel interaction patterns.
 5. Treat malformed, long, and non-ASCII input as normal product cases.
+6. Use expressive color and state-driven motion to make transformations feel
+   tangible, never to delay or distract from the task.
 
 ## Accessibility & Inclusion
 
