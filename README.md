@@ -20,13 +20,17 @@ This is a web-based tool for encoding and decoding text in various formats such 
 - Responsive design with a modern UI.
 
 All text transformations and QR image processing run locally in the browser. The
-tool does not upload entered text, generated QR codes, or selected images.
+tool does not upload entered text, generated QR codes, or selected images. A
+restrictive Content Security Policy also blocks unexpected remote connections.
 
 ## Development
 
-- `npm test` runs the dependency-free transform and QR safety tests.
-- `npm run build` creates the GitHub Pages site in `docs/`.
-- `npm run check:customizations` validates the project agent and Hallmark files.
+- Use Node.js 22 and restore dependencies with `npm ci`; generated
+  `node_modules/` and `dist/` directories are not versioned.
+- `npm run verify` runs tests, validates lockfile provenance and Copilot
+  customizations, and creates the GitHub Pages site in `docs/`.
+- Pull requests and `main` pushes run the same verification in CI, and
+  Dependabot monitors npm and GitHub Actions updates.
 
 ## Live Demo
 
