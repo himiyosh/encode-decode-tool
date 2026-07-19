@@ -1,9 +1,32 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Check, ChevronRight, Copy, Download, RefreshCw } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  Binary,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  Copy,
+  Download,
+  Fingerprint,
+  Info,
+  Languages,
+  Loader2,
+  QrCode,
+  RefreshCw,
+  ShieldCheck,
+} from 'lucide-react';
 import { getQrCanvasSize } from './qr-image.mjs';
 import { decodeValue, encodeValue } from './transforms.mjs';
 
 const tabs = ['URL', 'Base64', 'JWT', 'Unicode', 'QR'];
+const formatVisualMeta = {
+  URL: { token: '%', icon: ArrowLeftRight },
+  Base64: { token: '64', icon: Binary },
+  JWT: { token: '{}', icon: Fingerprint },
+  Unicode: { token: 'U+', icon: Languages },
+  QR: { token: 'QR', icon: QrCode },
+};
 const MAX_QR_IMAGE_BYTES = 10 * 1024 * 1024;
 const SUPPORTED_QR_IMAGE_TYPES = new Set([
   'image/png',
@@ -40,9 +63,45 @@ const formatMeta = {
   },
 };
 
+const StatusMessage = ({ id, status, celebrationKey = 0, className = '' }) => {
+  const Icon =
+    status.tone === 'success'
+      ? CheckCircle2
+      : status.tone === 'error' || status.tone === 'warning'
+        ? AlertTriangle
+        : status.tone === 'loading'
+          ? Loader2
+          : Info;
+
+  return (
+    <p
+      id={id}
+      className={`status-message ${className}`.trim()}
+      data-tone={status.tone}
+      role={status.tone === 'error' ? 'alert' : 'status'}
+      aria-atomic="true"
+    >
+      <Icon
+        aria-hidden="true"
+        size={17}
+        className={status.tone === 'loading' ? 'status-icon is-spinning' : 'status-icon'}
+      />
+      <span>{status.message}</span>
+      {status.tone === 'success' && celebrationKey > 0 && (
+        <span
+          key={celebrationKey}
+          className="success-burst"
+          aria-hidden="true"
+        />
+      )}
+    </p>
+  );
+};
+
 const App = () => {
   const [activeTab, setActiveTab] = useState('URL');
   const tabRefs = useRef([]);
+  const activeFormat = formatVisualMeta[activeTab];
 
   const selectTab = (index, moveFocus = false) => {
     setActiveTab(tabs[index]);
@@ -64,32 +123,77 @@ const App = () => {
   };
 
   return (
-    <main className="app-shell">
+    <main className="app-shell" data-active-format={activeTab.toLowerCase()}>
       <header className="app-header">
-        <h1>Encode / Decode Tool</h1>
-        <p>Transform text and QR codes locally in your browser.</p>
+        <div className="app-header__copy">
+          <p className="app-kicker">
+            <ShieldCheck aria-hidden="true" size={17} />
+            <span>Local signal playground</span>
+          </p>
+          <h1>
+            <span>Encode</span>
+            <ArrowLeftRight
+              className="title-switch"
+              aria-hidden="true"
+              strokeWidth={2.5}
+            />
+            <span>Decode</span>
+          </h1>
+          <p className="app-lede">
+            Turn strange strings into useful answers. Every byte stays here.
+          </p>
+        </div>
+
+        <div
+          className="signal-stage"
+          data-active={activeTab.toLowerCase()}
+          aria-hidden="true"
+        >
+          <span className="signal-stage__grid" />
+          <div className="signal-chips">
+            {tabs.map(tab => (
+              <span
+                key={tab}
+                className={`signal-chip signal-chip--${tab.toLowerCase()}`}
+              >
+                {formatVisualMeta[tab].token}
+              </span>
+            ))}
+          </div>
+          <span key={activeTab} className="signal-buddy">
+            <span className="signal-buddy__eyes">
+              <i />
+              <i />
+            </span>
+            <strong>{activeFormat.token}</strong>
+          </span>
+        </div>
       </header>
 
       <section className="workbench" aria-label="Encoding and decoding workbench">
-        <div className="tab-list" role="tablist" aria-label="Transformation formats">
+        <div className="workbench-meta" aria-hidden="true">
+          <span className="workbench-meta__dot" />
+          <span>Ready locally</span>
+          <strong>{activeTab} mode</strong>
+        </div>
+
+        <div
+          className="tab-list"
+          role="tablist"
+          aria-label="Transformation formats"
+          data-active={activeTab.toLowerCase()}
+        >
+          <span className="tab-indicator" aria-hidden="true" />
           {tabs.map((tab, index) => (
-            <button
+            <TabButton
               key={tab}
-              ref={element => {
-                tabRefs.current[index] = element;
-              }}
-              id={`tab-${tab.toLowerCase()}`}
-              type="button"
-              role="tab"
-              aria-selected={activeTab === tab}
-              aria-controls={`panel-${tab.toLowerCase()}`}
-              tabIndex={activeTab === tab ? 0 : -1}
-              className="tab-button"
-              onClick={() => selectTab(index)}
-              onKeyDown={event => handleTabKeyDown(event, index)}
-            >
-              {tab}
-            </button>
+              tab={tab}
+              index={index}
+              active={activeTab === tab}
+              tabRefs={tabRefs}
+              onSelect={selectTab}
+              onKeyDown={handleTabKeyDown}
+            />
           ))}
         </div>
 
@@ -102,8 +206,42 @@ const App = () => {
         )}
       </section>
 
-      <p className="privacy-note">Your text and images never leave this browser.</p>
+      <p className="privacy-note">
+        <ShieldCheck aria-hidden="true" size={18} />
+        <span>Local-only by design. Nothing is uploaded.</span>
+      </p>
     </main>
+  );
+};
+
+const TabButton = ({
+  tab,
+  index,
+  active,
+  tabRefs,
+  onSelect,
+  onKeyDown,
+}) => {
+  const Icon = formatVisualMeta[tab].icon;
+
+  return (
+    <button
+      ref={element => {
+        tabRefs.current[index] = element;
+      }}
+      id={`tab-${tab.toLowerCase()}`}
+      type="button"
+      role="tab"
+      aria-selected={active}
+      aria-controls={`panel-${tab.toLowerCase()}`}
+      tabIndex={active ? 0 : -1}
+      className="tab-button"
+      onClick={() => onSelect(index)}
+      onKeyDown={event => onKeyDown(event, index)}
+    >
+      <Icon className="tab-button__icon" aria-hidden="true" size={16} />
+      <span>{tab}</span>
+    </button>
   );
 };
 
@@ -143,6 +281,7 @@ const TabContent = ({ type, hidden }) => {
   });
   const [copyState, setCopyState] = useState('idle');
   const [outputSource, setOutputSource] = useState('');
+  const [celebrationKey, setCelebrationKey] = useState(0);
   const copyResetTimer = useRef();
   const meta = formatMeta[type];
   const id = type.toLowerCase();
@@ -176,6 +315,7 @@ const TabContent = ({ type, hidden }) => {
         action === 'encode' ? encodeValue(type, input) : decodeValue(type, input);
       setOutput(result);
       setOutputSource(input);
+      setCelebrationKey(value => value + 1);
       setStatus({
         tone: 'success',
         source: 'result',
@@ -278,15 +418,11 @@ const TabContent = ({ type, hidden }) => {
         </button>
       </div>
 
-      <p
+      <StatusMessage
         id={`${id}-status`}
-        className="status-message"
-        data-tone={status.tone}
-        role={status.tone === 'error' ? 'alert' : 'status'}
-        aria-atomic="true"
-      >
-        {status.message}
-      </p>
+        status={status}
+        celebrationKey={celebrationKey}
+      />
 
       <div className="field">
         <label htmlFor={`${id}-output`}>{meta.outputLabel}</label>
@@ -318,6 +454,7 @@ function QRCodeTab({ hidden }) {
   });
   const [generating, setGenerating] = useState(false);
   const [copyState, setCopyState] = useState('idle');
+  const [celebrationKey, setCelebrationKey] = useState(0);
   const canvasRef = useRef(null);
   const copyResetTimer = useRef();
   const decodeRequestId = useRef(0);
@@ -345,6 +482,9 @@ function QRCodeTab({ hidden }) {
       setImgSrc(url);
       setGeneratedText(sourceText);
       const generatedIsStale = sourceText !== textRef.current;
+      if (!generatedIsStale) {
+        setCelebrationKey(value => value + 1);
+      }
       setStatus({
         tone: generatedIsStale ? 'warning' : 'success',
         message: generatedIsStale
@@ -423,6 +563,7 @@ function QRCodeTab({ hidden }) {
             return;
           }
           setDecoded(code.data);
+          setCelebrationKey(value => value + 1);
           setStatus({ tone: 'success', message: 'QR code decoded locally.' });
         } catch (error) {
           if (requestId !== decodeRequestId.current) return;
@@ -484,15 +625,12 @@ function QRCodeTab({ hidden }) {
       hidden={hidden}
       className="tool-panel qr-panel"
     >
-      <p
+      <StatusMessage
         id="qr-status"
-        className="status-message qr-status"
-        data-tone={status.tone}
-        role={status.tone === 'error' ? 'alert' : 'status'}
-        aria-atomic="true"
-      >
-        {status.message}
-      </p>
+        status={status}
+        celebrationKey={celebrationKey}
+        className="qr-status"
+      />
 
       <div className="qr-section">
         <h2>Generate</h2>
@@ -540,7 +678,11 @@ function QRCodeTab({ hidden }) {
           disabled={!text || generating}
           aria-busy={generating}
         >
-          <RefreshCw aria-hidden="true" size={17} />
+          <RefreshCw
+            aria-hidden="true"
+            size={17}
+            className={generating ? 'is-spinning' : undefined}
+          />
           <span>{generating ? 'Generating…' : 'Generate QR'}</span>
         </button>
 
@@ -552,6 +694,7 @@ function QRCodeTab({ hidden }) {
           {imgSrc ? (
             <>
               <img
+                key={generatedText}
                 src={imgSrc}
                 alt={
                   qrIsStale

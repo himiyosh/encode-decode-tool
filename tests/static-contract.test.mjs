@@ -3,6 +3,16 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 
 const indexHtml = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+const appSource = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+const interfaceCss = fs.readFileSync(
+  new URL('../src/index.css', import.meta.url),
+  'utf8',
+);
+const tokenCss = fs.readFileSync(
+  new URL('../src/tokens.css', import.meta.url),
+  'utf8',
+);
+const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
 const ciWorkflow = fs.readFileSync(
   new URL('../.github/workflows/ci.yml', import.meta.url),
   'utf8',
@@ -47,4 +57,23 @@ test('CI uses immutable actions with least-privilege permissions', () => {
     assert.match(reference, /^[^@\s]+@[a-f0-9]{40}$/);
   }
   assert.match(ciWorkflow, /permissions:\s*\n\s+contents:\s+read/);
+});
+
+test('playful motion stays local, bounded, and reduced-motion safe', () => {
+  const reducedMotionCss = interfaceCss.slice(
+    interfaceCss.indexOf('@media (prefers-reduced-motion: reduce)'),
+  );
+
+  assert.doesNotMatch(`${indexHtml}\n${interfaceCss}\n${tokenCss}`, /https?:\/\//);
+  assert.match(interfaceCss, /@media \(prefers-reduced-motion: reduce\)/);
+  assert.match(interfaceCss, /\.success-burst/);
+  assert.match(interfaceCss, /\.tab-indicator/);
+  assert.match(appSource, /className="signal-stage"/);
+  assert.doesNotMatch(interfaceCss, /transition-all|cursor:\s*url|parallax/i);
+  assert.doesNotMatch(reducedMotionCss, /animation:[^;]*infinite/i);
+});
+
+test('README exposes both repository agents', () => {
+  assert.match(readme, /\.github\/agents\/EncodeDecodeAgent\.agent\.md/);
+  assert.match(readme, /\.github\/agents\/PlayfulWorkbenchAgent\.agent\.md/);
 });

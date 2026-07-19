@@ -17,6 +17,8 @@ This is a web-based tool for encoding and decoding text in various formats such 
   output; JWT assembly is limited to explicit unsecured (`alg: "none"`) tokens.
 - Keep previous results visible for comparison while preventing stale one-click
   copy or QR download after the source changes.
+- Use a playful multi-accent workbench with state-reactive motion and a complete
+  reduced-motion alternative.
 - Responsive design with a modern UI.
 
 All text transformations and QR image processing run locally in the browser. The
