@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArrowLeftRight,
@@ -17,6 +17,7 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 import { getQrCanvasSize } from './qr-image.mjs';
+import { countCodePoints } from './text-metrics.mjs';
 import { decodeValue, encodeValue } from './transforms.mjs';
 
 const tabs = ['URL', 'Base64', 'JWT', 'Unicode', 'QR'];
@@ -40,12 +41,14 @@ const formatMeta = {
     inputLabel: 'URL text',
     inputHint: 'Enter plain text to encode or percent-encoded text to decode.',
     placeholder: 'https://example.com/a path?x=1',
+    example: 'https://example.com/a path?x=1',
     outputLabel: 'URL result',
   },
   Base64: {
     inputLabel: 'UTF-8 text or Base64',
     inputHint: 'Base64 conversion preserves non-ASCII UTF-8 text.',
     placeholder: 'Hello, 世界',
+    example: 'Hello 👋 世界',
     outputLabel: 'Base64 result',
   },
   JWT: {
@@ -53,14 +56,21 @@ const formatMeta = {
     inputHint:
       'Assemble an unsecured token with header.alg set to "none", or decode a compact token. Decoding never verifies its signature or authenticity.',
     placeholder: '{"header":{"alg":"none"},"payload":{"sub":"123"}}',
+    example: '{"header":{"alg":"none"},"payload":{"sub":"123","name":"Ada"}}',
     outputLabel: 'JWT result',
   },
   Unicode: {
     inputLabel: 'Text or Unicode code points',
     inputHint: 'Decode space-separated decimal code points, such as 72 101 108 108 111.',
     placeholder: 'Hello 👋',
+    example: 'Hello 👋',
     outputLabel: 'Unicode result',
   },
+};
+
+const getCharacterLabel = count => {
+  const formattedCount = count.toLocaleString('en-US');
+  return `${formattedCount} ${count === 1 ? 'character' : 'characters'}`;
 };
 
 const StatusMessage = ({ id, status, celebrationKey = 0, className = '' }) => {
@@ -285,14 +295,21 @@ const TabContent = ({ type, hidden }) => {
   const copyResetTimer = useRef();
   const meta = formatMeta[type];
   const id = type.toLowerCase();
+  const inputCharacterLabel = useMemo(
+    () => getCharacterLabel(countCodePoints(input)),
+    [input],
+  );
+  const outputCharacterLabel = useMemo(
+    () => getCharacterLabel(countCodePoints(output)),
+    [output],
+  );
 
   useEffect(
     () => () => window.clearTimeout(copyResetTimer.current),
     [],
   );
 
-  const handleInputChange = event => {
-    const nextInput = event.target.value;
+  const updateInput = nextInput => {
     setInput(nextInput);
     setCopyState('idle');
     const nextOutputIsStale = Boolean(output && nextInput !== outputSource);
@@ -307,6 +324,10 @@ const TabContent = ({ type, hidden }) => {
             : 'Ready to transform.'
         : 'Enter text to enable the transformation actions.',
     });
+  };
+
+  const handleInputChange = event => {
+    updateInput(event.target.value);
   };
 
   const handleTransform = action => {
@@ -365,7 +386,19 @@ const TabContent = ({ type, hidden }) => {
       className="tool-panel"
     >
       <div className="field">
-        <label htmlFor={`${id}-input`}>{meta.inputLabel}</label>
+        <div className="field-heading">
+          <label htmlFor={`${id}-input`}>{meta.inputLabel}</label>
+          <div className="field-heading__meta">
+            {input && <span className="field-count">{inputCharacterLabel}</span>}
+            <button
+              type="button"
+              className="example-button"
+              onClick={() => updateInput(meta.example)}
+            >
+              Try example
+            </button>
+          </div>
+        </div>
         <p id={`${id}-input-help`} className="field-help">
           {meta.inputHint}
         </p>
@@ -425,7 +458,12 @@ const TabContent = ({ type, hidden }) => {
       />
 
       <div className="field">
-        <label htmlFor={`${id}-output`}>{meta.outputLabel}</label>
+        <div className="field-heading">
+          <label htmlFor={`${id}-output`}>{meta.outputLabel}</label>
+          {output && (
+            <span className="field-count">{outputCharacterLabel}</span>
+          )}
+        </div>
         <textarea
           id={`${id}-output`}
           name={`${id}-output`}
@@ -460,6 +498,14 @@ function QRCodeTab({ hidden }) {
   const decodeRequestId = useRef(0);
   const generateRequestId = useRef(0);
   const textRef = useRef('');
+  const textCharacterLabel = useMemo(
+    () => getCharacterLabel(countCodePoints(text)),
+    [text],
+  );
+  const decodedCharacterLabel = useMemo(
+    () => getCharacterLabel(countCodePoints(decoded)),
+    [decoded],
+  );
 
   useEffect(
     () => () => {
@@ -615,6 +661,26 @@ function QRCodeTab({ hidden }) {
     }
   };
 
+  const updateQrText = nextText => {
+    textRef.current = nextText;
+    setText(nextText);
+    const nextQrIsStale = Boolean(imgSrc && nextText !== generatedText);
+    setStatus({
+      tone: nextQrIsStale
+        ? 'warning'
+        : imgSrc && nextText === generatedText
+          ? 'success'
+          : 'idle',
+      message: nextText
+        ? imgSrc
+          ? nextQrIsStale
+            ? 'Text changed. Generate again before downloading this QR code.'
+            : 'This QR code matches the current text and is ready to download.'
+          : 'Ready to generate.'
+        : 'Enter text to enable QR generation.',
+    });
+  };
+
   const qrIsStale = Boolean(imgSrc && text !== generatedText);
 
   return (
@@ -635,7 +701,19 @@ function QRCodeTab({ hidden }) {
       <div className="qr-section">
         <h2>Generate</h2>
         <div className="field">
-          <label htmlFor="qr-text">Text to encode</label>
+          <div className="field-heading">
+            <label htmlFor="qr-text">Text to encode</label>
+            <div className="field-heading__meta">
+              {text && <span className="field-count">{textCharacterLabel}</span>}
+              <button
+                type="button"
+                className="example-button"
+                onClick={() => updateQrText('https://example.com/playful')}
+              >
+                Try example
+              </button>
+            </div>
+          </div>
           <p id="qr-text-help" className="field-help">
             The QR image is generated in this browser and is never uploaded.
           </p>
@@ -645,28 +723,7 @@ function QRCodeTab({ hidden }) {
             rows={3}
             placeholder="Text or URL"
             value={text}
-            onChange={event => {
-              const nextText = event.target.value;
-              textRef.current = nextText;
-              setText(nextText);
-              const nextQrIsStale = Boolean(
-                imgSrc && nextText !== generatedText,
-              );
-              setStatus({
-                tone: nextQrIsStale
-                  ? 'warning'
-                  : imgSrc && nextText === generatedText
-                    ? 'success'
-                    : 'idle',
-                message: nextText
-                  ? imgSrc
-                    ? nextQrIsStale
-                      ? 'Text changed. Generate again before downloading this QR code.'
-                      : 'This QR code matches the current text and is ready to download.'
-                    : 'Ready to generate.'
-                  : 'Enter text to enable QR generation.',
-              });
-            }}
+            onChange={event => updateQrText(event.target.value)}
             aria-describedby="qr-text-help qr-status"
           />
         </div>
@@ -744,7 +801,12 @@ function QRCodeTab({ hidden }) {
         <canvas ref={canvasRef} hidden aria-hidden="true" />
 
         <div className="field">
-          <label htmlFor="qr-output">Decoded text</label>
+          <div className="field-heading">
+            <label htmlFor="qr-output">Decoded text</label>
+            {decoded && (
+              <span className="field-count">{decodedCharacterLabel}</span>
+            )}
+          </div>
           <textarea
             id="qr-output"
             name="qr-output"

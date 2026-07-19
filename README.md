@@ -19,6 +19,8 @@ This is a web-based tool for encoding and decoding text in various formats such 
   copy or QR download after the source changes.
 - Use a playful multi-accent workbench with state-reactive motion and a complete
   reduced-motion alternative.
+- Load a safe example for every format and see Unicode-aware character counts
+  without leaving the current workflow.
 - Responsive design with a modern UI.
 
 All text transformations and QR image processing run locally in the browser. The

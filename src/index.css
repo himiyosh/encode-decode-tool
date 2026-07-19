@@ -436,7 +436,7 @@ button:disabled {
   background: transparent;
   color: var(--color-muted);
   cursor: pointer;
-  font-size: 0.72rem;
+  font-size: var(--text-xs);
   font-weight: 750;
   transition: color var(--dur-short) var(--ease-out);
 }
@@ -465,11 +465,51 @@ button:disabled {
   gap: var(--space-xs);
 }
 
+.field-heading {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-xs);
+}
+
+.field-heading__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-xs);
+}
+
 .field label,
 .qr-section h2 {
   color: var(--color-neutral);
   font-size: var(--text-sm);
   font-weight: 750;
+}
+
+.field-count {
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.example-button {
+  padding-inline: var(--space-sm);
+  border: var(--rule-thin) solid oklch(78% 0.16 220 / 0.48);
+  border-radius: var(--radius-pill);
+  background: oklch(25% 0.055 220 / 0.6);
+  color: var(--color-cyan);
+  cursor: pointer;
+  font-size: var(--text-xs);
+  font-weight: 750;
+  transition:
+    background-color var(--dur-short) var(--ease-out),
+    border-color var(--dur-short) var(--ease-out),
+    color var(--dur-short) var(--ease-out),
+    transform var(--dur-micro) var(--ease-press);
 }
 
 .field-help {
@@ -914,6 +954,17 @@ textarea[data-stale="true"] {
 }
 
 @media (hover: hover) and (pointer: fine) {
+  .example-button:hover {
+    border-color: var(--color-cyan);
+    background: oklch(30% 0.075 220 / 0.78);
+    color: var(--color-ink);
+    transform: translateY(-1px);
+  }
+
+  .example-button:active {
+    transform: translateY(1px);
+  }
+
   .tab-button:hover {
     color: var(--color-ink);
   }
@@ -1051,7 +1102,9 @@ textarea[data-stale="true"] {
   .action-button:not(:disabled):hover,
   .action-button:not(:disabled):active,
   .file-input::file-selector-button:hover,
-  .file-input::file-selector-button:active {
+  .file-input::file-selector-button:active,
+  .example-button:hover,
+  .example-button:active {
     transform: none;
   }
 }
