@@ -293,6 +293,7 @@ const TabContent = ({ type, hidden }) => {
   const [outputSource, setOutputSource] = useState('');
   const [celebrationKey, setCelebrationKey] = useState(0);
   const copyResetTimer = useRef();
+  const inputRef = useRef(null);
   const meta = formatMeta[type];
   const id = type.toLowerCase();
   const inputCharacterLabel = useMemo(
@@ -376,6 +377,18 @@ const TabContent = ({ type, hidden }) => {
 
   const outputIsStale = Boolean(output && input !== outputSource);
   const inputInvalid = status.tone === 'error' && status.source === 'input';
+  const handleUseOutput = () => {
+    setInput(output);
+    setOutput('');
+    setOutputSource('');
+    setCopyState('idle');
+    setStatus({
+      tone: 'idle',
+      source: 'input',
+      message: 'Output moved to input. Ready for the next transform.',
+    });
+    inputRef.current?.focus();
+  };
 
   return (
     <section
@@ -392,7 +405,7 @@ const TabContent = ({ type, hidden }) => {
             {input && <span className="field-count">{inputCharacterLabel}</span>}
             <button
               type="button"
-              className="example-button"
+              className="utility-button"
               onClick={() => updateInput(meta.example)}
             >
               Try example
@@ -403,6 +416,7 @@ const TabContent = ({ type, hidden }) => {
           {meta.inputHint}
         </p>
         <textarea
+          ref={inputRef}
           id={`${id}-input`}
           name={`${id}-input`}
           value={input}
@@ -461,7 +475,18 @@ const TabContent = ({ type, hidden }) => {
         <div className="field-heading">
           <label htmlFor={`${id}-output`}>{meta.outputLabel}</label>
           {output && (
-            <span className="field-count">{outputCharacterLabel}</span>
+            <div className="field-heading__meta">
+              <span className="field-count">{outputCharacterLabel}</span>
+              <button
+                type="button"
+                className="utility-button"
+                onClick={handleUseOutput}
+                disabled={outputIsStale}
+                aria-describedby={`${id}-status`}
+              >
+                Use as input
+              </button>
+            </div>
           )}
         </div>
         <textarea
@@ -498,6 +523,7 @@ function QRCodeTab({ hidden }) {
   const decodeRequestId = useRef(0);
   const generateRequestId = useRef(0);
   const textRef = useRef('');
+  const qrTextRef = useRef(null);
   const textCharacterLabel = useMemo(
     () => getCharacterLabel(countCodePoints(text)),
     [text],
@@ -707,7 +733,7 @@ function QRCodeTab({ hidden }) {
               {text && <span className="field-count">{textCharacterLabel}</span>}
               <button
                 type="button"
-                className="example-button"
+                className="utility-button"
                 onClick={() => updateQrText('https://example.com/playful')}
               >
                 Try example
@@ -718,6 +744,7 @@ function QRCodeTab({ hidden }) {
             The QR image is generated in this browser and is never uploaded.
           </p>
           <textarea
+            ref={qrTextRef}
             id="qr-text"
             name="qr-text"
             rows={3}
@@ -804,7 +831,20 @@ function QRCodeTab({ hidden }) {
           <div className="field-heading">
             <label htmlFor="qr-output">Decoded text</label>
             {decoded && (
-              <span className="field-count">{decodedCharacterLabel}</span>
+              <div className="field-heading__meta">
+                <span className="field-count">{decodedCharacterLabel}</span>
+                <button
+                  type="button"
+                  className="utility-button"
+                  onClick={() => {
+                    updateQrText(decoded);
+                    qrTextRef.current?.focus();
+                  }}
+                  aria-describedby="qr-status"
+                >
+                  Use to generate
+                </button>
+              </div>
             )}
           </div>
           <textarea

@@ -496,7 +496,7 @@ button:disabled {
   white-space: nowrap;
 }
 
-.example-button {
+.utility-button {
   padding-inline: var(--space-sm);
   border: var(--rule-thin) solid oklch(78% 0.16 220 / 0.48);
   border-radius: var(--radius-pill);
@@ -510,6 +510,12 @@ button:disabled {
     border-color var(--dur-short) var(--ease-out),
     color var(--dur-short) var(--ease-out),
     transform var(--dur-micro) var(--ease-press);
+}
+
+.utility-button:disabled {
+  border-color: var(--color-rule);
+  background: var(--color-disabled-surface);
+  color: var(--color-disabled);
 }
 
 .field-help {
@@ -857,7 +863,7 @@ textarea[data-stale="true"] {
 .decoded-link {
   display: inline-flex;
   width: fit-content;
-  min-height: 2.75rem;
+  min-height: 3rem;
   align-items: center;
   color: var(--color-cyan);
   font-size: var(--text-sm);
@@ -954,14 +960,14 @@ textarea[data-stale="true"] {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .example-button:hover {
+  .utility-button:not(:disabled):hover {
     border-color: var(--color-cyan);
     background: oklch(30% 0.075 220 / 0.78);
     color: var(--color-ink);
     transform: translateY(-1px);
   }
 
-  .example-button:active {
+  .utility-button:not(:disabled):active {
     transform: translateY(1px);
   }
 
@@ -1103,8 +1109,8 @@ textarea[data-stale="true"] {
   .action-button:not(:disabled):active,
   .file-input::file-selector-button:hover,
   .file-input::file-selector-button:active,
-  .example-button:hover,
-  .example-button:active {
+  .utility-button:hover,
+  .utility-button:active {
     transform: none;
   }
 }

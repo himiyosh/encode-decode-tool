@@ -21,6 +21,8 @@ This is a web-based tool for encoding and decoding text in various formats such 
   reduced-motion alternative.
 - Load a safe example for every format and see Unicode-aware character counts
   without leaving the current workflow.
+- Move transformed output back into the input, or decoded QR text into the
+  generator, for quick local round-trip checks.
 - Responsive design with a modern UI.
 
 All text transformations and QR image processing run locally in the browser. The
