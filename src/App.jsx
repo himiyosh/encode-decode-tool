@@ -1,295 +1,890 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Copy, RefreshCw, ChevronRight } from 'lucide-react';
-import QRCode from 'qrcode';
-import jsQR from 'jsqr';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AlertTriangle,
+  ArrowLeftRight,
+  Binary,
+  Check,
+  CheckCircle2,
+  ChevronRight,
+  Copy,
+  Download,
+  Fingerprint,
+  Info,
+  Languages,
+  Loader2,
+  QrCode,
+  RefreshCw,
+  ShieldCheck,
+} from 'lucide-react';
+import { getQrCanvasSize } from './qr-image.mjs';
+import { countCodePoints } from './text-metrics.mjs';
+import { decodeValue, encodeValue } from './transforms.mjs';
 
 const tabs = ['URL', 'Base64', 'JWT', 'Unicode', 'QR'];
+const formatVisualMeta = {
+  URL: { token: '%', icon: ArrowLeftRight },
+  Base64: { token: '64', icon: Binary },
+  JWT: { token: '{}', icon: Fingerprint },
+  Unicode: { token: 'U+', icon: Languages },
+  QR: { token: 'QR', icon: QrCode },
+};
+const MAX_QR_IMAGE_BYTES = 10 * 1024 * 1024;
+const SUPPORTED_QR_IMAGE_TYPES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+]);
 
-const App = () => {
-  useEffect(() => {
-    console.log('App render');
-  }, []);
+const formatMeta = {
+  URL: {
+    inputLabel: 'URL text',
+    inputHint: 'Enter plain text to encode or percent-encoded text to decode.',
+    placeholder: 'https://example.com/a path?x=1',
+    example: 'https://example.com/a path?x=1',
+    outputLabel: 'URL result',
+  },
+  Base64: {
+    inputLabel: 'UTF-8 text or Base64',
+    inputHint: 'Base64 conversion preserves non-ASCII UTF-8 text.',
+    placeholder: 'Hello, 世界',
+    example: 'Hello 👋 世界',
+    outputLabel: 'Base64 result',
+  },
+  JWT: {
+    inputLabel: 'JWT JSON or compact token',
+    inputHint:
+      'Assemble an unsecured token with header.alg set to "none", or decode a compact token. Decoding never verifies its signature or authenticity.',
+    placeholder: '{"header":{"alg":"none"},"payload":{"sub":"123"}}',
+    example: '{"header":{"alg":"none"},"payload":{"sub":"123","name":"Ada"}}',
+    outputLabel: 'JWT result',
+  },
+  Unicode: {
+    inputLabel: 'Text or Unicode code points',
+    inputHint: 'Decode space-separated decimal code points, such as 72 101 108 108 111.',
+    placeholder: 'Hello 👋',
+    example: 'Hello 👋',
+    outputLabel: 'Unicode result',
+  },
+};
 
-  const [activeTab, setActiveTab] = useState('URL');
+const getCharacterLabel = count => {
+  const formattedCount = count.toLocaleString('en-US');
+  return `${formattedCount} ${count === 1 ? 'character' : 'characters'}`;
+};
+
+const StatusMessage = ({ id, status, celebrationKey = 0, className = '' }) => {
+  const Icon =
+    status.tone === 'success'
+      ? CheckCircle2
+      : status.tone === 'error' || status.tone === 'warning'
+        ? AlertTriangle
+        : status.tone === 'loading'
+          ? Loader2
+          : Info;
+
   return (
-    <div className="min-h-screen flex flex-col items-center p-6 bg-gradient-to-b from-gray-800 to-black">
-      <h1 className="text-4xl font-extrabold mb-6">Encode / Decode Tool</h1>
-      <div className="bg-gray-700 rounded-2xl shadow-2xl w-full max-w-3xl p-4">
-        <div className="flex border-b border-gray-600 mb-4">
-          {tabs.map(tab => (
-            <button
-              key={tab}
-              className={`flex-1 py-2 text-center font-medium ${
-                activeTab === tab ? 'text-white border-b-2 border-indigo-400' : 'text-gray-400'
-              }`}
-              onClick={() => setActiveTab(tab)}
-            >
-              {tab}
-            </button>
-          ))}
-        </div>
-        <div className="relative">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={activeTab}
-              initial={{ opacity: 0, x: 50 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -50 }}
-              className="space-y-4"
-            >
-              {activeTab === 'URL'     && <TabContent type="URL" />}
-              {activeTab === 'Base64'  && <TabContent type="Base64" />}
-              {activeTab === 'JWT'     && <TabContent type="JWT" />}
-              {activeTab === 'Unicode' && <TabContent type="Unicode" />}
-              {activeTab === 'QR'      && <QRCodeTab />}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </div>
-    </div>
+    <p
+      id={id}
+      className={`status-message ${className}`.trim()}
+      data-tone={status.tone}
+      role={status.tone === 'error' ? 'alert' : 'status'}
+      aria-atomic="true"
+    >
+      <Icon
+        aria-hidden="true"
+        size={17}
+        className={status.tone === 'loading' ? 'status-icon is-spinning' : 'status-icon'}
+      />
+      <span>{status.message}</span>
+      {status.tone === 'success' && celebrationKey > 0 && (
+        <span
+          key={celebrationKey}
+          className="success-burst"
+          aria-hidden="true"
+        />
+      )}
+    </p>
   );
 };
 
-// Base64url エンコード
-const base64urlEncode = str =>
-  btoa(unescape(encodeURIComponent(str)))
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=/g, '');
+const App = () => {
+  const [activeTab, setActiveTab] = useState('URL');
+  const tabRefs = useRef([]);
+  const activeFormat = formatVisualMeta[activeTab];
 
-// Base64url デコード
-const base64urlDecode = str => {
-  str = str.replace(/-/g, '+').replace(/_/g, '/');
-  while (str.length % 4) {
-    str += '=';
-  }
-  return decodeURIComponent(escape(atob(str)));
-};
-
-const TabContent = ({ type }) => {
-  const [input, setInput] = useState('');
-  const [output, setOutput] = useState('');
-
-  const handleEncode = () => {
-    let res = '';
-    try {
-      switch (type) {
-        case 'URL':
-          res = encodeURIComponent(input);
-          break;
-        case 'Base64':
-          res = btoa(unescape(encodeURIComponent(input)));
-          break;
-        case 'Unicode':
-          res = input.split('').map(c => c.charCodeAt(0)).join(' ');
-          break;
-        case 'JWT':
-          try {
-            const { header, payload } = JSON.parse(input);
-            const h = base64urlEncode(JSON.stringify(header));
-            const p = base64urlEncode(JSON.stringify(payload));
-            res = `${h}.${p}.`;
-          } catch {
-            res = 'Invalid JSON format. Provide {"header":..., "payload":...}';
-          }
-          break;
-        default:
-          res = '';
-      }
-    } catch {
-      res = 'Error';
+  const selectTab = (index, moveFocus = false) => {
+    setActiveTab(tabs[index]);
+    if (moveFocus) {
+      tabRefs.current[index]?.focus({ preventScroll: true });
     }
-    setOutput(res);
   };
 
-  const handleDecode = () => {
-    let res = '';
-    try {
-      switch (type) {
-        case 'URL':
-          res = decodeURIComponent(input);
-          break;
-        case 'Base64':
-          res = decodeURIComponent(escape(atob(input)));
-          break;
-        case 'Unicode':
-          res = input.split(' ').map(code => String.fromCharCode(+code)).join('');
-          break;
-        case 'JWT':
-          const parts = input.trim().split('.');
-          if (parts.length < 2) throw new Error();
-          const hd = JSON.parse(base64urlDecode(parts[0]));
-          const pl = JSON.parse(base64urlDecode(parts[1]));
-          res = JSON.stringify({ header: hd, payload: pl, signature: parts[2] || '' }, null, 2);
-          break;
-        default:
-          res = '';
-      }
-    } catch {
-      res = 'Invalid input';
-    }
-    setOutput(res);
+  const handleTabKeyDown = (event, index) => {
+    let nextIndex;
+    if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+    if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+    if (event.key === 'Home') nextIndex = 0;
+    if (event.key === 'End') nextIndex = tabs.length - 1;
+    if (nextIndex === undefined) return;
+
+    event.preventDefault();
+    selectTab(nextIndex, true);
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, x: 50 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -50 }}
-      className="space-y-4"
+    <main className="app-shell" data-active-format={activeTab.toLowerCase()}>
+      <header className="app-header">
+        <div className="app-header__copy">
+          <p className="app-kicker">
+            <ShieldCheck aria-hidden="true" size={17} />
+            <span>Local signal playground</span>
+          </p>
+          <h1>
+            <span>Encode</span>
+            <ArrowLeftRight
+              className="title-switch"
+              aria-hidden="true"
+              strokeWidth={2.5}
+            />
+            <span>Decode</span>
+          </h1>
+          <p className="app-lede">
+            Turn strange strings into useful answers. Every byte stays here.
+          </p>
+        </div>
+
+        <div
+          className="signal-stage"
+          data-active={activeTab.toLowerCase()}
+          aria-hidden="true"
+        >
+          <span className="signal-stage__grid" />
+          <div className="signal-chips">
+            {tabs.map(tab => (
+              <span
+                key={tab}
+                className={`signal-chip signal-chip--${tab.toLowerCase()}`}
+              >
+                {formatVisualMeta[tab].token}
+              </span>
+            ))}
+          </div>
+          <span key={activeTab} className="signal-buddy">
+            <span className="signal-buddy__eyes">
+              <i />
+              <i />
+            </span>
+            <strong>{activeFormat.token}</strong>
+          </span>
+        </div>
+      </header>
+
+      <section className="workbench" aria-label="Encoding and decoding workbench">
+        <div className="workbench-meta" aria-hidden="true">
+          <span className="workbench-meta__dot" />
+          <span>Ready locally</span>
+          <strong>{activeTab} mode</strong>
+        </div>
+
+        <div
+          className="tab-list"
+          role="tablist"
+          aria-label="Transformation formats"
+          data-active={activeTab.toLowerCase()}
+        >
+          <span className="tab-indicator" aria-hidden="true" />
+          {tabs.map((tab, index) => (
+            <TabButton
+              key={tab}
+              tab={tab}
+              index={index}
+              active={activeTab === tab}
+              tabRefs={tabRefs}
+              onSelect={selectTab}
+              onKeyDown={handleTabKeyDown}
+            />
+          ))}
+        </div>
+
+        {tabs.map(tab =>
+          tab === 'QR' ? (
+            <QRCodeTab key={tab} hidden={activeTab !== tab} />
+          ) : (
+            <TabContent key={tab} type={tab} hidden={activeTab !== tab} />
+          ),
+        )}
+      </section>
+
+      <p className="privacy-note">
+        <ShieldCheck aria-hidden="true" size={18} />
+        <span>Local-only by design. Nothing is uploaded.</span>
+      </p>
+    </main>
+  );
+};
+
+const TabButton = ({
+  tab,
+  index,
+  active,
+  tabRefs,
+  onSelect,
+  onKeyDown,
+}) => {
+  const Icon = formatVisualMeta[tab].icon;
+
+  return (
+    <button
+      ref={element => {
+        tabRefs.current[index] = element;
+      }}
+      id={`tab-${tab.toLowerCase()}`}
+      type="button"
+      role="tab"
+      aria-selected={active}
+      aria-controls={`panel-${tab.toLowerCase()}`}
+      tabIndex={active ? 0 : -1}
+      className="tab-button"
+      onClick={() => onSelect(index)}
+      onKeyDown={event => onKeyDown(event, index)}
     >
-      <textarea
-        value={input}
-        onChange={e => setInput(e.target.value)}
-        placeholder={`${type} input`}
-        rows={5}
-        className="w-full bg-gray-800 rounded-lg p-3 text-sm"
-      />
-      <div className="flex space-x-4">
+      <Icon className="tab-button__icon" aria-hidden="true" size={16} />
+      <span>{tab}</span>
+    </button>
+  );
+};
+
+const getTransformError = (type, action) => {
+  if (type === 'URL') {
+    return 'That text is not valid percent-encoded content. Check incomplete % sequences and try again.';
+  }
+  if (type === 'Base64') {
+    return 'That value is not valid UTF-8 Base64. Check its characters and padding, then try again.';
+  }
+  if (type === 'Unicode') {
+    return action === 'encode'
+      ? 'That text contains an unmatched Unicode surrogate and cannot be encoded without changing it.'
+      : 'Use decimal Unicode code points from 0 to 1114111, separated by spaces.';
+  }
+  if (type === 'JWT' && action === 'encode') {
+    return 'Use JSON with object-valued "header" and "payload" properties, and set header.alg to "none". This tool does not sign tokens.';
+  }
+  return 'That compact token is malformed. Check its object-valued header and payload, algorithm, and Base64URL signature segment.';
+};
+
+const getSuccessMessage = (type, action) => {
+  if (type === 'JWT' && action === 'decode') {
+    return 'JWT structure decoded. Its signature was not verified.';
+  }
+  if (type === 'JWT') return 'Unsigned JWT assembled.';
+  return `${type} ${action === 'encode' ? 'encoded' : 'decoded'}.`;
+};
+
+const TabContent = ({ type, hidden }) => {
+  const [input, setInput] = useState('');
+  const [output, setOutput] = useState('');
+  const [status, setStatus] = useState({
+    tone: 'idle',
+    source: 'input',
+    message: 'Enter text to enable the transformation actions.',
+  });
+  const [copyState, setCopyState] = useState('idle');
+  const [outputSource, setOutputSource] = useState('');
+  const [celebrationKey, setCelebrationKey] = useState(0);
+  const copyResetTimer = useRef();
+  const inputRef = useRef(null);
+  const meta = formatMeta[type];
+  const id = type.toLowerCase();
+  const inputCharacterLabel = useMemo(
+    () => getCharacterLabel(countCodePoints(input)),
+    [input],
+  );
+  const outputCharacterLabel = useMemo(
+    () => getCharacterLabel(countCodePoints(output)),
+    [output],
+  );
+
+  useEffect(
+    () => () => window.clearTimeout(copyResetTimer.current),
+    [],
+  );
+
+  const updateInput = nextInput => {
+    setInput(nextInput);
+    setCopyState('idle');
+    const nextOutputIsStale = Boolean(output && nextInput !== outputSource);
+    setStatus({
+      tone: nextOutputIsStale ? 'warning' : output ? 'success' : 'idle',
+      source: nextOutputIsStale || !output ? 'input' : 'result',
+      message: nextInput
+        ? nextOutputIsStale
+          ? 'Input changed. Transform again to update the output.'
+          : output
+            ? 'Output matches the current input and is ready to copy.'
+            : 'Ready to transform.'
+        : 'Enter text to enable the transformation actions.',
+    });
+  };
+
+  const handleInputChange = event => {
+    updateInput(event.target.value);
+  };
+
+  const handleTransform = action => {
+    try {
+      const result =
+        action === 'encode' ? encodeValue(type, input) : decodeValue(type, input);
+      setOutput(result);
+      setOutputSource(input);
+      setCelebrationKey(value => value + 1);
+      setStatus({
+        tone: 'success',
+        source: 'result',
+        message: getSuccessMessage(type, action),
+      });
+    } catch {
+      setOutput('');
+      setOutputSource('');
+      setStatus({
+        tone: 'error',
+        source: 'input',
+        message: getTransformError(type, action),
+      });
+    }
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(output);
+      setCopyState('copied');
+      setStatus({
+        tone: 'success',
+        source: 'result',
+        message: 'Output copied to the clipboard.',
+      });
+      window.clearTimeout(copyResetTimer.current);
+      copyResetTimer.current = window.setTimeout(() => setCopyState('idle'), 2500);
+    } catch {
+      setCopyState('idle');
+      setStatus({
+        tone: 'error',
+        source: 'action',
+        message: 'The browser blocked clipboard access. Select the output and copy it manually.',
+      });
+    }
+  };
+
+  const outputIsStale = Boolean(output && input !== outputSource);
+  const inputInvalid = status.tone === 'error' && status.source === 'input';
+  const handleUseOutput = () => {
+    setInput(output);
+    setOutput('');
+    setOutputSource('');
+    setCopyState('idle');
+    setStatus({
+      tone: 'idle',
+      source: 'input',
+      message: 'Output moved to input. Ready for the next transform.',
+    });
+    inputRef.current?.focus();
+  };
+
+  return (
+    <section
+      id={`panel-${id}`}
+      role="tabpanel"
+      aria-labelledby={`tab-${id}`}
+      hidden={hidden}
+      className="tool-panel"
+    >
+      <div className="field">
+        <div className="field-heading">
+          <label htmlFor={`${id}-input`}>{meta.inputLabel}</label>
+          <div className="field-heading__meta">
+            {input && <span className="field-count">{inputCharacterLabel}</span>}
+            <button
+              type="button"
+              className="utility-button"
+              onClick={() => updateInput(meta.example)}
+            >
+              Try example
+            </button>
+          </div>
+        </div>
+        <p id={`${id}-input-help`} className="field-help">
+          {meta.inputHint}
+        </p>
+        <textarea
+          ref={inputRef}
+          id={`${id}-input`}
+          name={`${id}-input`}
+          value={input}
+          onChange={handleInputChange}
+          placeholder={meta.placeholder}
+          rows={5}
+          spellCheck={false}
+          autoCapitalize="none"
+          aria-invalid={inputInvalid ? 'true' : undefined}
+          aria-describedby={`${id}-input-help ${id}-status`}
+        />
+      </div>
+
+      <div className="action-group">
         <button
-          onClick={handleEncode}
-          className="flex-1 py-2 bg-indigo-500 rounded-lg hover:bg-indigo-600 flex items-center justify-center space-x-2 text-sm"
+          type="button"
+          className="action-button action-button--primary"
+          onClick={() => handleTransform('encode')}
+          disabled={input.length === 0}
         >
-          <RefreshCw size={16} /> <span>Encode</span>
+          <RefreshCw aria-hidden="true" size={17} />
+          <span>Encode</span>
         </button>
         <button
-          onClick={handleDecode}
-          className="flex-1 py-2 bg-green-500 rounded-lg hover:bg-green-600 flex items-center justify-center space-x-2 text-sm"
+          type="button"
+          className="action-button action-button--secondary"
+          onClick={() => handleTransform('decode')}
+          disabled={input.length === 0}
         >
-          <ChevronRight size={16} /> <span>Decode</span>
+          <ChevronRight aria-hidden="true" size={17} />
+          <span>Decode</span>
         </button>
         <button
-          onClick={() => navigator.clipboard.writeText(output)}
-          className="py-2 px-4 bg-gray-600 rounded-lg hover:bg-gray-500 flex items-center space-x-2 text-sm"
+          type="button"
+          className="action-button action-button--tertiary copy-button"
+          onClick={handleCopy}
+          disabled={!output || outputIsStale}
+          data-state={copyState}
         >
-          <Copy size={16} /> <span>Copy</span>
+          {copyState === 'copied' ? (
+            <Check aria-hidden="true" size={17} />
+          ) : (
+            <Copy aria-hidden="true" size={17} />
+          )}
+          <span>{copyState === 'copied' ? 'Copied' : 'Copy'}</span>
         </button>
       </div>
-      <textarea
-        value={output}
-        readOnly
-        rows={5}
-        className="w-full bg-gray-800 rounded-lg p-3 text-sm"
+
+      <StatusMessage
+        id={`${id}-status`}
+        status={status}
+        celebrationKey={celebrationKey}
       />
-    </motion.div>
+
+      <div className="field">
+        <div className="field-heading">
+          <label htmlFor={`${id}-output`}>{meta.outputLabel}</label>
+          {output && (
+            <div className="field-heading__meta">
+              <span className="field-count">{outputCharacterLabel}</span>
+              <button
+                type="button"
+                className="utility-button"
+                onClick={handleUseOutput}
+                disabled={outputIsStale}
+                aria-describedby={`${id}-status`}
+              >
+                Use as input
+              </button>
+            </div>
+          )}
+        </div>
+        <textarea
+          id={`${id}-output`}
+          name={`${id}-output`}
+          value={output}
+          readOnly
+          rows={5}
+          placeholder="Output appears here"
+          aria-describedby={`${id}-status`}
+          data-stale={outputIsStale ? 'true' : undefined}
+        />
+      </div>
+    </section>
   );
 };
 
 export default App;
 
-
-function QRCodeTab() {
+function QRCodeTab({ hidden }) {
   const [text, setText] = useState('');
   const [imgSrc, setImgSrc] = useState('');
+  const [generatedText, setGeneratedText] = useState('');
   const [decoded, setDecoded] = useState('');
+  const [status, setStatus] = useState({
+    tone: 'idle',
+    message: 'Generate a QR code or choose an image to decode locally.',
+  });
+  const [generating, setGenerating] = useState(false);
+  const [copyState, setCopyState] = useState('idle');
+  const [celebrationKey, setCelebrationKey] = useState(0);
   const canvasRef = useRef(null);
+  const copyResetTimer = useRef();
+  const decodeRequestId = useRef(0);
+  const generateRequestId = useRef(0);
+  const textRef = useRef('');
+  const qrTextRef = useRef(null);
+  const textCharacterLabel = useMemo(
+    () => getCharacterLabel(countCodePoints(text)),
+    [text],
+  );
+  const decodedCharacterLabel = useMemo(
+    () => getCharacterLabel(countCodePoints(decoded)),
+    [decoded],
+  );
 
-  // テキストから QR コードを生成
+  useEffect(
+    () => () => {
+      window.clearTimeout(copyResetTimer.current);
+      decodeRequestId.current += 1;
+      generateRequestId.current += 1;
+    },
+    [],
+  );
+
   const generateQR = async () => {
+    const sourceText = text;
+    const requestId = ++generateRequestId.current;
+    setGenerating(true);
+    setStatus({ tone: 'loading', message: 'Generating QR code…' });
     try {
-      const url = await QRCode.toDataURL(text);
+      const { default: QRCode } = await import('qrcode');
+      const url = await QRCode.toDataURL(sourceText, { width: 240, margin: 2 });
+      if (requestId !== generateRequestId.current) return;
       setImgSrc(url);
-      setDecoded('');
-    } catch (e) {
-      console.error(e);
+      setGeneratedText(sourceText);
+      const generatedIsStale = sourceText !== textRef.current;
+      if (!generatedIsStale) {
+        setCelebrationKey(value => value + 1);
+      }
+      setStatus({
+        tone: generatedIsStale ? 'warning' : 'success',
+        message: generatedIsStale
+          ? 'Text changed while the QR code was generated. Generate again before downloading.'
+          : 'QR code generated and ready to download.',
+      });
+    } catch {
+      if (requestId !== generateRequestId.current) return;
+      setImgSrc('');
+      setGeneratedText('');
+      setStatus({
+        tone: 'error',
+        message: 'The QR code could not be generated. Check the text and try again.',
+      });
+    } finally {
+      if (requestId === generateRequestId.current) {
+        setGenerating(false);
+      }
     }
   };
 
-  // 画像ファイルから QR コードを読み取り
   const onFileChange = e => {
-    const file = e.target.files?.[0];
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
+    const requestId = ++decodeRequestId.current;
+    setDecoded('');
+    setCopyState('idle');
+
+    if (!SUPPORTED_QR_IMAGE_TYPES.has(file.type)) {
+      setStatus({
+        tone: 'error',
+        message: 'That file is not an image. Choose a PNG, JPEG, GIF, or WebP image.',
+      });
+      input.value = '';
+      return;
+    }
+    if (file.size > MAX_QR_IMAGE_BYTES) {
+      setStatus({
+        tone: 'error',
+        message: 'That image is larger than 10 MB. Choose a smaller image.',
+      });
+      input.value = '';
+      return;
+    }
+
+    setStatus({ tone: 'loading', message: 'Reading the QR image locally…' });
     const reader = new FileReader();
     reader.onload = () => {
+      if (requestId !== decodeRequestId.current) return;
       const img = new Image();
-      img.onload = () => {
-        const canvas = canvasRef.current;
-        canvas.width = img.width;
-        canvas.height = img.height;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-        const { data, width, height } = ctx.getImageData(0, 0, img.width, img.height);
-        const code = jsQR(data, width, height);
-        setDecoded(code?.data || 'No QR code found');
+      img.onload = async () => {
+        if (requestId !== decodeRequestId.current) return;
+        try {
+          const canvas = canvasRef.current;
+          const context = canvas?.getContext('2d', { willReadFrequently: true });
+          if (!canvas || !context) throw new Error('canvas-unavailable');
+          const canvasSize = getQrCanvasSize(img.naturalWidth, img.naturalHeight);
+          canvas.width = canvasSize.width;
+          canvas.height = canvasSize.height;
+          context.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
+          const imageData = context.getImageData(
+            0,
+            0,
+            canvasSize.width,
+            canvasSize.height,
+          );
+          const { default: jsQR } = await import('jsqr');
+          if (requestId !== decodeRequestId.current) return;
+          const code = jsQR(imageData.data, imageData.width, imageData.height);
+          if (!code?.data) {
+            setStatus({
+              tone: 'error',
+              message: 'No QR code was found in that image. Try a sharper, uncropped image.',
+            });
+            return;
+          }
+          setDecoded(code.data);
+          setCelebrationKey(value => value + 1);
+          setStatus({ tone: 'success', message: 'QR code decoded locally.' });
+        } catch (error) {
+          if (requestId !== decodeRequestId.current) return;
+          setDecoded('');
+          setStatus({
+            tone: 'error',
+            message:
+              error instanceof Error &&
+              error.message === 'image-dimensions-too-large'
+                ? 'That image has too many pixels to process safely. Choose an image under 24 megapixels.'
+                : 'The image could not be read. Try another image file.',
+          });
+        }
+      };
+      img.onerror = () => {
+        if (requestId !== decodeRequestId.current) return;
+        setStatus({
+          tone: 'error',
+          message: 'The image could not be opened. Try another image file.',
+        });
       };
       img.src = reader.result;
     };
+    reader.onerror = () => {
+      if (requestId !== decodeRequestId.current) return;
+      setStatus({
+        tone: 'error',
+        message: 'The browser could not read that file. Choose it again or try another image.',
+      });
+    };
+
     reader.readAsDataURL(file);
+    input.value = '';
   };
 
+  const copyDecoded = async () => {
+    try {
+      await navigator.clipboard.writeText(decoded);
+      setCopyState('copied');
+      setStatus({ tone: 'success', message: 'Decoded text copied to the clipboard.' });
+      window.clearTimeout(copyResetTimer.current);
+      copyResetTimer.current = window.setTimeout(() => setCopyState('idle'), 2500);
+    } catch {
+      setCopyState('idle');
+      setStatus({
+        tone: 'error',
+        message: 'The browser blocked clipboard access. Select the decoded text and copy it manually.',
+      });
+    }
+  };
+
+  const updateQrText = nextText => {
+    textRef.current = nextText;
+    setText(nextText);
+    const nextQrIsStale = Boolean(imgSrc && nextText !== generatedText);
+    setStatus({
+      tone: nextQrIsStale
+        ? 'warning'
+        : imgSrc && nextText === generatedText
+          ? 'success'
+          : 'idle',
+      message: nextText
+        ? imgSrc
+          ? nextQrIsStale
+            ? 'Text changed. Generate again before downloading this QR code.'
+            : 'This QR code matches the current text and is ready to download.'
+          : 'Ready to generate.'
+        : 'Enter text to enable QR generation.',
+    });
+  };
+
+  const qrIsStale = Boolean(imgSrc && text !== generatedText);
+
   return (
-    <motion.div
-      key="QR"
-      initial={{ opacity: 0, x: 50 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -50 }}
-      className="space-y-6"
+    <section
+      id="panel-qr"
+      role="tabpanel"
+      aria-labelledby="tab-qr"
+      hidden={hidden}
+      className="tool-panel qr-panel"
     >
-      {/* QR コード生成セクション */}
-      <div className="space-y-2">
-        <textarea
-          className="w-full bg-gray-800 rounded-lg p-3 text-sm"
-          rows={3}
-          placeholder="テキストを入力"
-          value={text}
-          onChange={e => setText(e.target.value)}
-        />
-        <button
-          onClick={generateQR}
-          className="w-full py-2 bg-indigo-500 rounded hover:bg-indigo-600 text-white"
-        >
-          Generate QR
-        </button>
-        {imgSrc && (
-          <img
-            src={imgSrc}
-            alt="QR Code"
-            className="mx-auto mt-4 bg-white p-2 rounded"
-          />
-        )}
-      </div>
+      <StatusMessage
+        id="qr-status"
+        status={status}
+        celebrationKey={celebrationKey}
+        className="qr-status"
+      />
 
-      {/* QR コード読み取りセクション */}
-      <div className="space-y-2">
-        <label
-          htmlFor="qr-upload"
-          className="block w-full py-2 text-center bg-green-500 rounded hover:bg-green-600 cursor-pointer text-white text-sm"
-        >
-          Upload Image to URL
-        </label>
-        <input
-          id="qr-upload"
-          type="file"
-          accept="image/*"
-          onChange={onFileChange}
-          className="hidden"
-        />
-        <canvas ref={canvasRef} className="hidden" />
-
-        {/* 読み取り結果 */}
-        <textarea
-          className="w-full bg-gray-800 rounded-lg p-3 text-sm"
-          rows={3}
-          readOnly
-          placeholder="Decoded result"
-          value={decoded}
-        />
-
-        {/* URL 形式ならリンクとして表示 */}
-        {decoded.match(/^https?:\/\//) && (
-          <div className="mt-2 break-all">
-            <a
-              href={decoded}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-indigo-400 underline hover:text-indigo-200 break-all whitespace-normal"
-            >
-              {decoded}
-            </a>
+      <div className="qr-section">
+        <h2>Generate</h2>
+        <div className="field">
+          <div className="field-heading">
+            <label htmlFor="qr-text">Text to encode</label>
+            <div className="field-heading__meta">
+              {text && <span className="field-count">{textCharacterLabel}</span>}
+              <button
+                type="button"
+                className="utility-button"
+                onClick={() => updateQrText('https://example.com/playful')}
+              >
+                Try example
+              </button>
+            </div>
           </div>
+          <p id="qr-text-help" className="field-help">
+            The QR image is generated in this browser and is never uploaded.
+          </p>
+          <textarea
+            ref={qrTextRef}
+            id="qr-text"
+            name="qr-text"
+            rows={3}
+            placeholder="Text or URL"
+            value={text}
+            onChange={event => updateQrText(event.target.value)}
+            aria-describedby="qr-text-help qr-status"
+          />
+        </div>
+
+        <button
+          type="button"
+          onClick={generateQR}
+          className="action-button action-button--primary"
+          disabled={!text || generating}
+          aria-busy={generating}
+        >
+          <RefreshCw
+            aria-hidden="true"
+            size={17}
+            className={generating ? 'is-spinning' : undefined}
+          />
+          <span>{generating ? 'Generating…' : 'Generate QR'}</span>
+        </button>
+
+        <div
+          className="qr-preview"
+          aria-live="polite"
+          data-stale={qrIsStale ? 'true' : undefined}
+        >
+          {imgSrc ? (
+            <>
+              <img
+                key={generatedText}
+                src={imgSrc}
+                alt={
+                  qrIsStale
+                    ? 'Generated QR code, out of date with the current text'
+                    : 'Generated QR code'
+                }
+                width="240"
+                height="240"
+              />
+              {qrIsStale && <span className="stale-badge">Out of date</span>}
+            </>
+          ) : (
+            <p>Generated QR appears here.</p>
+          )}
+        </div>
+
+        {imgSrc && !qrIsStale && (
+          <a
+            href={imgSrc}
+            download="qr-code.png"
+            className="action-button action-button--secondary download-link"
+          >
+            <Download aria-hidden="true" size={17} />
+            <span>Download QR</span>
+          </a>
         )}
       </div>
-    </motion.div>
+
+      <div className="qr-section">
+        <h2>Decode</h2>
+        <div className="field">
+          <label htmlFor="qr-upload">QR image</label>
+          <p id="qr-upload-help" className="field-help">
+            Choose an image from this device. It is processed locally.
+          </p>
+          <input
+            id="qr-upload"
+            name="qr-upload"
+            type="file"
+            accept="image/png,image/jpeg,image/gif,image/webp"
+            onChange={onFileChange}
+            aria-describedby="qr-upload-help qr-status"
+            className="file-input"
+          />
+        </div>
+
+        <canvas ref={canvasRef} hidden aria-hidden="true" />
+
+        <div className="field">
+          <div className="field-heading">
+            <label htmlFor="qr-output">Decoded text</label>
+            {decoded && (
+              <div className="field-heading__meta">
+                <span className="field-count">{decodedCharacterLabel}</span>
+                <button
+                  type="button"
+                  className="utility-button"
+                  onClick={() => {
+                    updateQrText(decoded);
+                    qrTextRef.current?.focus();
+                  }}
+                  aria-describedby="qr-status"
+                >
+                  Use to generate
+                </button>
+              </div>
+            )}
+          </div>
+          <textarea
+            id="qr-output"
+            name="qr-output"
+            rows={3}
+            readOnly
+            placeholder="Decoded text appears here"
+            value={decoded}
+            aria-describedby="qr-status"
+          />
+        </div>
+
+        <button
+          type="button"
+          className="action-button action-button--tertiary copy-button"
+          onClick={copyDecoded}
+          disabled={!decoded}
+          data-state={copyState}
+        >
+          {copyState === 'copied' ? (
+            <Check aria-hidden="true" size={17} />
+          ) : (
+            <Copy aria-hidden="true" size={17} />
+          )}
+          <span>{copyState === 'copied' ? 'Copied' : 'Copy decoded text'}</span>
+        </button>
+
+        {/^https?:\/\//i.test(decoded) && (
+          <a
+            href={decoded}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="decoded-link"
+          >
+            Open decoded URL
+          </a>
+        )}
+      </div>
+
+    </section>
   );
 }
