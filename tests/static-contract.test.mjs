@@ -4,6 +4,25 @@ import fs from 'node:fs';
 
 const indexHtml = fs.readFileSync(new URL('../index.html', import.meta.url), 'utf8');
 const appSource = fs.readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8');
+const uiSource = [
+  '../src/App.jsx',
+  '../src/AppHeader.jsx',
+  '../src/QrCodePanel.jsx',
+  '../src/StatusMessage.jsx',
+  '../src/TransformPanel.jsx',
+  '../src/TransformTabs.jsx',
+  '../src/format-config.jsx',
+]
+  .map(path => fs.readFileSync(new URL(path, import.meta.url), 'utf8'))
+  .join('\n');
+const transformPanelSource = fs.readFileSync(
+  new URL('../src/TransformPanel.jsx', import.meta.url),
+  'utf8',
+);
+const qrCodePanelSource = fs.readFileSync(
+  new URL('../src/QrCodePanel.jsx', import.meta.url),
+  'utf8',
+);
 const interfaceCss = fs.readFileSync(
   new URL('../src/index.css', import.meta.url),
   'utf8',
@@ -135,20 +154,20 @@ test('playful motion stays local, bounded, and reduced-motion safe', () => {
   assert.doesNotMatch(`${indexHtml}\n${interfaceCss}\n${tokenCss}`, /https?:\/\//);
   assert.match(interfaceCss, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(interfaceCss, /\.tab-indicator/);
-  assert.match(appSource, /className="signal-stage"/);
+  assert.match(uiSource, /className="signal-stage"/);
   assert.doesNotMatch(interfaceCss, /transition-all|cursor:\s*url|parallax/i);
   assert.doesNotMatch(reducedMotionCss, /animation:[^;]*infinite/i);
 });
 
 test('workbench accessibility and responsive contracts stay explicit', () => {
-  assert.match(appSource, /role="tab"/);
-  assert.match(appSource, /aria-orientation="horizontal"/);
+  assert.match(uiSource, /role="tab"/);
+  assert.match(uiSource, /aria-orientation="horizontal"/);
   assert.match(appSource, /focus\(\{ preventScroll: true \}\)/);
-  assert.match(appSource, /role="status"/);
-  assert.match(appSource, /aria-live="polite"/);
-  assert.match(appSource, /aria-errormessage=/);
-  assert.doesNotMatch(appSource, /role=\{[^}]*alert/);
-  assert.doesNotMatch(`${appSource}\n${interfaceCss}`, /success-burst|celebrationKey/);
+  assert.match(uiSource, /role="status"/);
+  assert.match(uiSource, /aria-live="polite"/);
+  assert.match(uiSource, /aria-errormessage=/);
+  assert.doesNotMatch(uiSource, /role=\{[^}]*alert/);
+  assert.doesNotMatch(`${uiSource}\n${interfaceCss}`, /success-burst|celebrationKey/);
 
   assert.match(interfaceCss, /html,\s*\nbody\s*\{[\s\S]*?overflow-x:\s*clip/);
   assert.doesNotMatch(
@@ -164,6 +183,49 @@ test('workbench accessibility and responsive contracts stay explicit', () => {
   assert.match(interfaceCss, /@media \(forced-colors: active\)/);
   assert.match(interfaceCss, /@media \(prefers-contrast: more\)/);
   assert.doesNotMatch(interfaceCss, /oklch\(/);
+});
+
+test('App stays the mounted-panel composition and keyboard ownership root', () => {
+  assert.match(appSource, /const \[activeTab, setActiveTab\] = useState\('URL'\)/);
+  assert.match(appSource, /focus\(\{ preventScroll: true \}\)/);
+  assert.match(appSource, /\{tabs\.map\(tab =>/);
+  assert.match(appSource, /<QrCodePanel key=\{tab\} hidden=\{activeTab !== tab\} \/>/);
+  assert.match(
+    appSource,
+    /<TransformPanel key=\{tab\} type=\{tab\} hidden=\{activeTab !== tab\} \/>/,
+  );
+  assert.doesNotMatch(
+    appSource,
+    /encodeValue|decodeValue|getTransformErrorMessage|navigator\.clipboard/,
+  );
+  assert.doesNotMatch(
+    appSource,
+    /decodeRequestId|generateRequestId|pendingImageRef|inspectQrImage|import\(['"](?:qrcode|jsqr)['"]\)/,
+  );
+});
+
+test('transform and QR implementations stay in their cohesive panel owners', () => {
+  assert.match(transformPanelSource, /encodeValue\(type, input\)/);
+  assert.match(transformPanelSource, /decodeValue\(type, input\)/);
+  assert.match(transformPanelSource, /getTransformErrorMessage\(type, action, error\)/);
+  assert.match(transformPanelSource, /navigator\.clipboard\.writeText\(output\)/);
+
+  for (const marker of [
+    'decodeRequestId',
+    'generateRequestId',
+    'pendingImageRef',
+    'pendingImageUrlRef',
+    'inspectQrImage',
+    'qrImageDimensionsMatch',
+    'getQrCanvasSize',
+    "import('qrcode')",
+    "import('jsqr')",
+    'URL.revokeObjectURL',
+    'navigator.clipboard.writeText(decoded)',
+    'rel="noopener noreferrer"',
+  ]) {
+    assert.ok(qrCodePanelSource.includes(marker), `QR panel must own ${marker}`);
+  }
 });
 
 test('Tailwind uses the v4 PostCSS integration and CSS entry point', () => {
