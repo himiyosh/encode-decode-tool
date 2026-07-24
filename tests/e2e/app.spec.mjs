@@ -154,15 +154,36 @@ test('stale results block one-click actions while current results can be copied'
     .toBe('hello%20world');
 
   await input.fill('changed');
-  await expect(panel.getByRole('status')).toContainText(
-    'Transform again to update the output.',
-  );
+  const status = panel.getByRole('status');
+  const staleMessage = 'Input changed. Transform again to update the output.';
+  await expect(status).toContainText(staleMessage);
   await expect(copy).toBeDisabled();
   const useAsInput = panel.getByRole('button', { name: 'Use as input' });
   await expect(useAsInput).toHaveAttribute('aria-disabled', 'true');
   await expect(useAsInput).toBeDisabled();
+  await expect(output).toHaveAttribute('data-stale', 'true');
+
+  await useAsInput.evaluate(element => {
+    element.addEventListener(
+      'click',
+      () => {
+        element.dataset.keyboardActivated = 'true';
+      },
+      { once: true },
+    );
+  });
+  await useAsInput.focus();
+  await expect(useAsInput).toBeFocused();
+  await page.keyboard.press('Enter');
+
+  await expect(useAsInput).toHaveAttribute('data-keyboard-activated', 'true');
+  await expect(useAsInput).toBeFocused();
+  await expect(useAsInput).toHaveAttribute('aria-disabled', 'true');
+  await expect(copy).toBeDisabled();
   await expect(input).toHaveValue('changed');
   await expect(output).toHaveValue('hello%20world');
+  await expect(output).toHaveAttribute('data-stale', 'true');
+  await expect(status).toContainText(staleMessage);
 });
 
 test('format tabs implement Arrow, Home, End, wrap, and focus semantics', async ({
