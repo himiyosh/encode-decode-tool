@@ -72,7 +72,7 @@ const getCharacterLabel = count => {
   return `${formattedCount} ${count === 1 ? 'character' : 'characters'}`;
 };
 
-const StatusMessage = ({ id, status, celebrationKey = 0, className = '' }) => {
+const StatusMessage = ({ id, status, className = '' }) => {
   const Icon =
     status.tone === 'success'
       ? CheckCircle2
@@ -87,7 +87,8 @@ const StatusMessage = ({ id, status, celebrationKey = 0, className = '' }) => {
       id={id}
       className={`status-message ${className}`.trim()}
       data-tone={status.tone}
-      role={status.tone === 'error' ? 'alert' : 'status'}
+      role="status"
+      aria-live="polite"
       aria-atomic="true"
     >
       <Icon
@@ -96,13 +97,6 @@ const StatusMessage = ({ id, status, celebrationKey = 0, className = '' }) => {
         className={status.tone === 'loading' ? 'status-icon is-spinning' : 'status-icon'}
       />
       <span>{status.message}</span>
-      {status.tone === 'success' && celebrationKey > 0 && (
-        <span
-          key={celebrationKey}
-          className="success-burst"
-          aria-hidden="true"
-        />
-      )}
     </p>
   );
 };
@@ -137,10 +131,11 @@ const App = () => {
         <div className="app-header__copy">
           <p className="app-kicker">
             <ShieldCheck aria-hidden="true" size={17} />
-            <span>Local signal playground</span>
+            <span>Local encode/decode workbench</span>
           </p>
           <h1>
             <span>Encode</span>
+            <span className="sr-only"> and </span>
             <ArrowLeftRight
               className="title-switch"
               aria-hidden="true"
@@ -149,7 +144,7 @@ const App = () => {
             <span>Decode</span>
           </h1>
           <p className="app-lede">
-            Turn strange strings into useful answers. Every byte stays here.
+            Inspect encoded text and QR data. Every byte stays in this browser.
           </p>
         </div>
 
@@ -190,6 +185,7 @@ const App = () => {
           className="tab-list"
           role="tablist"
           aria-label="Transformation formats"
+          aria-orientation="horizontal"
           data-active={activeTab.toLowerCase()}
         >
           <span className="tab-indicator" aria-hidden="true" />
@@ -276,7 +272,6 @@ const TabContent = ({ type, hidden }) => {
   });
   const [copyState, setCopyState] = useState('idle');
   const [outputSource, setOutputSource] = useState('');
-  const [celebrationKey, setCelebrationKey] = useState(0);
   const copyResetTimer = useRef();
   const inputRef = useRef(null);
   const meta = formatMeta[type];
@@ -329,7 +324,6 @@ const TabContent = ({ type, hidden }) => {
       setOutput(result);
       setHasOutput(true);
       setOutputSource(input);
-      setCelebrationKey(value => value + 1);
       setStatus({
         tone: 'success',
         source: 'result',
@@ -383,6 +377,9 @@ const TabContent = ({ type, hidden }) => {
     });
     inputRef.current?.focus();
   };
+  const handleUseOutputClick = () => {
+    if (!outputIsStale) handleUseOutput();
+  };
 
   return (
     <section
@@ -420,7 +417,8 @@ const TabContent = ({ type, hidden }) => {
           spellCheck={false}
           autoCapitalize="none"
           aria-invalid={inputInvalid ? 'true' : undefined}
-          aria-describedby={`${id}-input-help ${id}-status`}
+          aria-describedby={`${id}-input-help`}
+          aria-errormessage={inputInvalid ? `${id}-status` : undefined}
         />
       </div>
 
@@ -462,7 +460,6 @@ const TabContent = ({ type, hidden }) => {
       <StatusMessage
         id={`${id}-status`}
         status={status}
-        celebrationKey={celebrationKey}
       />
 
       <div className="field">
@@ -474,8 +471,8 @@ const TabContent = ({ type, hidden }) => {
               <button
                 type="button"
                 className="utility-button"
-                onClick={handleUseOutput}
-                disabled={outputIsStale}
+                onClick={handleUseOutputClick}
+                aria-disabled={outputIsStale ? 'true' : undefined}
                 aria-describedby={`${id}-status`}
               >
                 Use as input
@@ -490,7 +487,7 @@ const TabContent = ({ type, hidden }) => {
           readOnly
           rows={5}
           placeholder={hasOutput ? 'The result is empty' : 'Output appears here'}
-          aria-describedby={`${id}-status`}
+          aria-describedby={outputIsStale ? `${id}-status` : undefined}
           data-stale={outputIsStale ? 'true' : undefined}
         />
       </div>
@@ -508,11 +505,11 @@ function QRCodeTab({ hidden }) {
   const [hasDecoded, setHasDecoded] = useState(false);
   const [status, setStatus] = useState({
     tone: 'idle',
+    source: 'general',
     message: 'Generate a QR code or choose an image to decode locally.',
   });
   const [generating, setGenerating] = useState(false);
   const [copyState, setCopyState] = useState('idle');
-  const [celebrationKey, setCelebrationKey] = useState(0);
   const canvasRef = useRef(null);
   const copyResetTimer = useRef();
   const decodeRequestId = useRef(0);
@@ -554,10 +551,11 @@ function QRCodeTab({ hidden }) {
   );
 
   const generateQR = async () => {
+    if (!text || generating) return;
     const sourceText = text;
     const requestId = ++generateRequestId.current;
     setGenerating(true);
-    setStatus({ tone: 'loading', message: 'Generating QR code…' });
+    setStatus({ tone: 'loading', source: 'text', message: 'Generating QR code…' });
     try {
       const { default: QRCode } = await import('qrcode');
       const url = await QRCode.toDataURL(sourceText, { width: 240, margin: 2 });
@@ -565,11 +563,9 @@ function QRCodeTab({ hidden }) {
       setImgSrc(url);
       setGeneratedText(sourceText);
       const generatedIsStale = sourceText !== textRef.current;
-      if (!generatedIsStale) {
-        setCelebrationKey(value => value + 1);
-      }
       setStatus({
         tone: generatedIsStale ? 'warning' : 'success',
+        source: generatedIsStale ? 'text' : 'result',
         message: generatedIsStale
           ? 'Text changed while the QR code was generated. Generate again before downloading.'
           : 'QR code generated and ready to download.',
@@ -580,6 +576,7 @@ function QRCodeTab({ hidden }) {
       setGeneratedText('');
       setStatus({
         tone: 'error',
+        source: 'text',
         message: isQrCapacityError(error)
           ? 'That text is too long for one QR code. Shorten it and generate again.'
           : 'The QR code could not be generated. Check the text and try again.',
@@ -605,12 +602,17 @@ function QRCodeTab({ hidden }) {
     if (file.size > MAX_QR_IMAGE_BYTES) {
       setStatus({
         tone: 'error',
+        source: 'file',
         message: 'That image is larger than 10 MB. Choose a smaller image.',
       });
       return;
     }
 
-    setStatus({ tone: 'loading', message: 'Checking the QR image locally…' });
+    setStatus({
+      tone: 'loading',
+      source: 'file',
+      message: 'Checking the QR image locally…',
+    });
     let bytes;
     try {
       bytes = new Uint8Array(await file.arrayBuffer());
@@ -618,6 +620,7 @@ function QRCodeTab({ hidden }) {
       if (requestId !== decodeRequestId.current) return;
       setStatus({
         tone: 'error',
+        source: 'file',
         message: 'The browser could not read that file. Choose it again or try another image.',
       });
       return;
@@ -632,6 +635,7 @@ function QRCodeTab({ hidden }) {
       const code = error instanceof Error ? error.message : '';
       setStatus({
         tone: 'error',
+        source: 'file',
         message:
           code === 'image-dimensions-too-large'
             ? 'That image has too many pixels to process safely. Choose an image under 24 megapixels.'
@@ -643,7 +647,11 @@ function QRCodeTab({ hidden }) {
     }
     if (requestId !== decodeRequestId.current) return;
 
-    setStatus({ tone: 'loading', message: 'Decoding the QR image locally…' });
+    setStatus({
+      tone: 'loading',
+      source: 'file',
+      message: 'Decoding the QR image locally…',
+    });
     const imageUrl = URL.createObjectURL(file);
     const img = new Image();
     pendingImageRef.current = img;
@@ -696,20 +704,25 @@ function QRCodeTab({ hidden }) {
           setHasDecoded(false);
           setStatus({
             tone: 'error',
+            source: 'file',
             message: 'No QR code was found in that image. Try a sharper, uncropped image.',
           });
           return;
         }
         setDecoded(code.data);
         setHasDecoded(true);
-        setCelebrationKey(value => value + 1);
-        setStatus({ tone: 'success', message: 'QR code decoded locally.' });
+        setStatus({
+          tone: 'success',
+          source: 'decoded',
+          message: 'QR code decoded locally.',
+        });
       } catch {
         if (requestId !== decodeRequestId.current) return;
         setDecoded('');
         setHasDecoded(false);
         setStatus({
           tone: 'error',
+          source: 'file',
           message: 'The image could not be read. Try another image file.',
         });
       } finally {
@@ -721,6 +734,7 @@ function QRCodeTab({ hidden }) {
       releaseImage();
       setStatus({
         tone: 'error',
+        source: 'file',
         message: 'The image could not be opened. Try another image file.',
       });
     };
@@ -731,13 +745,18 @@ function QRCodeTab({ hidden }) {
     try {
       await navigator.clipboard.writeText(decoded);
       setCopyState('copied');
-      setStatus({ tone: 'success', message: 'Decoded text copied to the clipboard.' });
+      setStatus({
+        tone: 'success',
+        source: 'decoded',
+        message: 'Decoded text copied to the clipboard.',
+      });
       window.clearTimeout(copyResetTimer.current);
       copyResetTimer.current = window.setTimeout(() => setCopyState('idle'), 2500);
     } catch {
       setCopyState('idle');
       setStatus({
         tone: 'error',
+        source: 'action',
         message: 'The browser blocked clipboard access. Select the decoded text and copy it manually.',
       });
     }
@@ -753,6 +772,7 @@ function QRCodeTab({ hidden }) {
         : imgSrc && nextText === generatedText
           ? 'success'
           : 'idle',
+      source: nextQrIsStale ? 'text' : imgSrc ? 'result' : 'text',
       message: nextText
         ? imgSrc
           ? nextQrIsStale
@@ -764,6 +784,8 @@ function QRCodeTab({ hidden }) {
   };
 
   const qrIsStale = Boolean(imgSrc && text !== generatedText);
+  const qrTextInvalid = status.tone === 'error' && status.source === 'text';
+  const qrFileInvalid = status.tone === 'error' && status.source === 'file';
 
   return (
     <section
@@ -776,12 +798,11 @@ function QRCodeTab({ hidden }) {
       <StatusMessage
         id="qr-status"
         status={status}
-        celebrationKey={celebrationKey}
         className="qr-status"
       />
 
-      <div className="qr-section">
-        <h2>Generate</h2>
+      <section className="qr-section" aria-labelledby="qr-generate-heading">
+        <h2 id="qr-generate-heading">Generate</h2>
         <div className="field">
           <div className="field-heading">
             <label htmlFor="qr-text">Text to encode</label>
@@ -807,7 +828,9 @@ function QRCodeTab({ hidden }) {
             placeholder="Text or URL"
             value={text}
             onChange={event => updateQrText(event.target.value)}
-            aria-describedby="qr-text-help qr-status"
+            aria-describedby="qr-text-help"
+            aria-invalid={qrTextInvalid ? 'true' : undefined}
+            aria-errormessage={qrTextInvalid ? 'qr-status' : undefined}
           />
         </div>
 
@@ -815,8 +838,10 @@ function QRCodeTab({ hidden }) {
           type="button"
           onClick={generateQR}
           className="action-button action-button--primary"
-          disabled={!text || generating}
+          disabled={!text}
+          aria-disabled={generating ? 'true' : undefined}
           aria-busy={generating}
+          aria-describedby="qr-status"
         >
           <RefreshCw
             aria-hidden="true"
@@ -828,7 +853,6 @@ function QRCodeTab({ hidden }) {
 
         <div
           className="qr-preview"
-          aria-live="polite"
           data-stale={qrIsStale ? 'true' : undefined}
         >
           {imgSrc ? (
@@ -861,10 +885,10 @@ function QRCodeTab({ hidden }) {
             <span>Download QR</span>
           </a>
         )}
-      </div>
+      </section>
 
-      <div className="qr-section">
-        <h2>Decode</h2>
+      <section className="qr-section" aria-labelledby="qr-decode-heading">
+        <h2 id="qr-decode-heading">Decode</h2>
         <div className="field">
           <label htmlFor="qr-upload">QR image</label>
           <p id="qr-upload-help" className="field-help">
@@ -876,7 +900,9 @@ function QRCodeTab({ hidden }) {
             type="file"
             accept="image/png,image/jpeg,image/gif,image/webp"
             onChange={onFileChange}
-            aria-describedby="qr-upload-help qr-status"
+            aria-describedby="qr-upload-help"
+            aria-invalid={qrFileInvalid ? 'true' : undefined}
+            aria-errormessage={qrFileInvalid ? 'qr-status' : undefined}
             className="file-input"
           />
         </div>
@@ -912,7 +938,6 @@ function QRCodeTab({ hidden }) {
             readOnly
             placeholder={hasDecoded ? 'The decoded text is empty' : 'Decoded text appears here'}
             value={decoded}
-            aria-describedby="qr-status"
           />
         </div>
 
@@ -941,7 +966,7 @@ function QRCodeTab({ hidden }) {
             Open decoded URL
           </a>
         )}
-      </div>
+      </section>
 
     </section>
   );
