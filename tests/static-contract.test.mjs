@@ -12,6 +12,13 @@ const tokenCss = fs.readFileSync(
   new URL('../src/tokens.css', import.meta.url),
   'utf8',
 );
+const packageJson = JSON.parse(
+  fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+);
+const postcssConfig = fs.readFileSync(
+  new URL('../postcss.config.js', import.meta.url),
+  'utf8',
+);
 const readme = fs.readFileSync(new URL('../README.md', import.meta.url), 'utf8');
 const ciWorkflow = fs.readFileSync(
   new URL('../.github/workflows/ci.yml', import.meta.url),
@@ -71,6 +78,22 @@ test('playful motion stays local, bounded, and reduced-motion safe', () => {
   assert.match(appSource, /className="signal-stage"/);
   assert.doesNotMatch(interfaceCss, /transition-all|cursor:\s*url|parallax/i);
   assert.doesNotMatch(reducedMotionCss, /animation:[^;]*infinite/i);
+});
+
+test('Tailwind uses the v4 PostCSS integration and CSS entry point', () => {
+  assert.match(packageJson.devDependencies.tailwindcss, /^\^4\./);
+  assert.match(packageJson.devDependencies['@tailwindcss/postcss'], /^\^4\./);
+  assert.equal(packageJson.devDependencies.autoprefixer, undefined);
+  assert.match(postcssConfig, /['"]@tailwindcss\/postcss['"]\s*:/);
+  assert.doesNotMatch(postcssConfig, /\b(?:tailwindcss|autoprefixer)\s*:/);
+  assert.match(interfaceCss, /^@import "tailwindcss" source\(none\);/);
+  assert.match(interfaceCss, /@source "\.\.\/index\.html";/);
+  assert.match(interfaceCss, /@source "\.\/";/);
+  assert.doesNotMatch(interfaceCss, /@tailwind\s+(?:base|components|utilities)/);
+  assert.equal(
+    fs.existsSync(new URL('../tailwind.config.js', import.meta.url)),
+    false,
+  );
 });
 
 test('README exposes both repository agents', () => {
