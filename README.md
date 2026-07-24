@@ -34,6 +34,10 @@ All text transformations and QR image processing run locally in the browser. The
 tool does not upload entered text, generated QR codes, or selected images. A
 restrictive Content Security Policy also blocks unexpected remote connections.
 
+## Security
+
+Report suspected vulnerabilities privately by following the [security policy](.github/SECURITY.md). Do not disclose vulnerabilities in public issues.
+
 ## Development
 
 - Use Node.js 22 and restore dependencies with `npm ci`; generated

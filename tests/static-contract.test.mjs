@@ -43,8 +43,16 @@ const ciWorkflow = fs.readFileSync(
   new URL('../.github/workflows/ci.yml', import.meta.url),
   'utf8',
 );
+const codeqlWorkflow = fs.readFileSync(
+  new URL('../.github/workflows/codeql.yml', import.meta.url),
+  'utf8',
+);
 const dependabotConfig = fs.readFileSync(
   new URL('../.github/dependabot.yml', import.meta.url),
+  'utf8',
+);
+const securityPolicy = fs.readFileSync(
+  new URL('../.github/SECURITY.md', import.meta.url),
   'utf8',
 );
 const viteConfig = fs.readFileSync(
@@ -85,16 +93,61 @@ test('document enforces the local-only browser security contract', () => {
   assert.match(indexHtml, /<meta name="referrer" content="no-referrer"\s*\/>/);
 });
 
-test('CI uses immutable actions with least-privilege permissions', () => {
-  const actionReferences = [...ciWorkflow.matchAll(/uses:\s+([^\s#]+)/g)].map(
-    match => match[1],
-  );
+test('workflows use immutable actions with least-privilege permissions', () => {
+  const workflowDirectory = new URL('../.github/workflows/', import.meta.url);
+  const workflows = fs
+    .readdirSync(workflowDirectory)
+    .filter(name => /\.ya?ml$/.test(name))
+    .map(name => ({
+      name,
+      source: fs.readFileSync(new URL(name, workflowDirectory), 'utf8'),
+    }));
 
-  assert.ok(actionReferences.length > 0, 'CI must use at least one action');
-  for (const reference of actionReferences) {
-    assert.match(reference, /^[^@\s]+@[a-f0-9]{40}$/);
+  for (const { name, source: workflow } of workflows) {
+    const actionReferences = [...workflow.matchAll(/uses:\s+([^\s#]+)/g)].map(
+      match => match[1],
+    );
+
+    assert.ok(actionReferences.length > 0, `${name} must use an action`);
+    for (const reference of actionReferences) {
+      assert.match(reference, /^[^@\s]+@[a-f0-9]{40}$/);
+    }
+    assert.doesNotMatch(workflow, /\b(?:write-all|contents:\s+write)\b/);
   }
+
   assert.match(ciWorkflow, /permissions:\s*\n\s+contents:\s+read/);
+  assert.match(
+    codeqlWorkflow,
+    /permissions:\s*\n\s+contents:\s+read\s*\n\s+security-events:\s+write/,
+  );
+});
+
+test('CodeQL scans JavaScript and TypeScript without duplicating the CI build', () => {
+  assert.match(codeqlWorkflow, /^on:\s*\n\s+push:\s*\n\s+branches:\s*\n\s+- main/m);
+  assert.match(
+    codeqlWorkflow,
+    /\s+pull_request:\s*\n\s+branches:\s*\n\s+- main/,
+  );
+  assert.match(codeqlWorkflow, /\s+schedule:\s*\n\s+- cron: '[^']+'/);
+  assert.match(codeqlWorkflow, /\s+workflow_dispatch:\s*$/m);
+  assert.match(codeqlWorkflow, /timeout-minutes:\s+10/);
+  assert.match(codeqlWorkflow, /languages:\s+javascript-typescript/);
+  assert.match(codeqlWorkflow, /build-mode:\s+none/);
+  assert.match(codeqlWorkflow, /github\/codeql-action\/init@[a-f0-9]{40}/);
+  assert.match(codeqlWorkflow, /github\/codeql-action\/analyze@[a-f0-9]{40}/);
+  assert.doesNotMatch(codeqlWorkflow, /\b(?:autobuild|npm|npx|pnpm|yarn)\b/);
+});
+
+test('security policy requires private, privacy-conscious disclosure', () => {
+  assert.match(readme, /\.github\/SECURITY\.md/);
+  assert.match(securityPolicy, /current version on the `main` branch/i);
+  assert.match(securityPolicy, /security\/advisories\/new/);
+  assert.match(securityPolicy, /Do not disclose[^.]+public issues/i);
+  assert.match(securityPolicy, /reproducible steps/i);
+  assert.match(securityPolicy, /security and privacy impact/i);
+  assert.match(securityPolicy, /Remove real secrets, personal data/i);
+  assert.match(securityPolicy, /locally in the browser/i);
+  assert.match(securityPolicy, /unexpected network transmission/i);
 });
 
 test('all pull requests run the complete dependency validation gates', () => {
