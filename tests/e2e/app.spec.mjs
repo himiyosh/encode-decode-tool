@@ -211,6 +211,27 @@ test('format tabs implement Arrow, Home, End, wrap, and focus semantics', async 
   await expect(url).toHaveAttribute('tabindex', '-1');
 });
 
+test('format panels stay mounted and preserve per-tab state', async ({ page }) => {
+  await openApp(page);
+  const panels = page.getByRole('tabpanel', { includeHidden: true });
+  const urlPanel = page.locator('#panel-url');
+  const base64Panel = page.locator('#panel-base64');
+
+  await expect(panels).toHaveCount(5);
+  await urlPanel.getByLabel('URL text').fill('persistent URL input');
+  await selectFormat(page, 'Base64');
+  await base64Panel.getByLabel('UTF-8 text or Base64').fill('persistent Base64 input');
+
+  await expect(urlPanel).toHaveAttribute('hidden', '');
+  await expect(base64Panel).not.toHaveAttribute('hidden', '');
+  await selectFormat(page, 'URL');
+  await expect(urlPanel.getByLabel('URL text')).toHaveValue('persistent URL input');
+  await selectFormat(page, 'Base64');
+  await expect(base64Panel.getByLabel('UTF-8 text or Base64')).toHaveValue(
+    'persistent Base64 input',
+  );
+});
+
 test('QR generation downloads, round-trips locally, and reports deterministic limits', async ({
   page,
 }) => {
