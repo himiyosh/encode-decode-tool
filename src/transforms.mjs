@@ -1,5 +1,7 @@
 const utf8Encoder = new TextEncoder();
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+const jsonNumberPattern =
+  /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
 
 const isRecord = value =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
@@ -23,6 +25,90 @@ const assertWellFormedString = value => {
   }
 };
 
+const assertWellFormedJsonValue = value => {
+  const pending = [value];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (typeof current === 'string') {
+      assertWellFormedString(current);
+    } else if (Array.isArray(current)) {
+      for (const child of current) pending.push(child);
+    } else if (isRecord(current)) {
+      for (const [key, child] of Object.entries(current)) {
+        assertWellFormedString(key);
+        pending.push(child);
+      }
+    }
+  }
+};
+
+const normalizeJsonNumber = source => {
+  const match = source.match(
+    /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/,
+  );
+  if (!match) throw new Error('invalid-jwt-number');
+
+  const [, sign, integer, fraction = '', exponent = '0'] = match;
+  let coefficient = `${integer}${fraction}`.replace(/^0+/, '');
+  let decimalExponent = BigInt(exponent) - BigInt(fraction.length);
+  if (!coefficient) return sign ? '-0' : '0';
+
+  while (coefficient.endsWith('0')) {
+    coefficient = coefficient.slice(0, -1);
+    decimalExponent += 1n;
+  }
+  return `${sign}${coefficient}e${decimalExponent}`;
+};
+
+const assertStableJsonNumbers = source => {
+  let inString = false;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (inString) {
+      if (character === '\\') {
+        index += 1;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+      continue;
+    }
+    if (character !== '-' && (character < '0' || character > '9')) continue;
+
+    jsonNumberPattern.lastIndex = index;
+    const match = jsonNumberPattern.exec(source);
+    if (!match) throw new Error('invalid-jwt-number');
+    const numberSource = match[0];
+    const parsed = Number(numberSource);
+    if (
+      !Number.isFinite(parsed) ||
+      normalizeJsonNumber(numberSource) !== normalizeJsonNumber(String(parsed))
+    ) {
+      throw new Error('invalid-jwt-number');
+    }
+    index += numberSource.length - 1;
+  }
+};
+
+const parseJwtJson = source => {
+  let parsed;
+  try {
+    parsed = JSON.parse(source);
+  } catch {
+    throw new Error('invalid-jwt-json');
+  }
+  assertStableJsonNumbers(source);
+  try {
+    assertWellFormedJsonValue(parsed);
+  } catch {
+    throw new Error('invalid-jwt-unicode');
+  }
+  return parsed;
+};
+
 const bytesToBinary = bytes => {
   let binary = '';
   const chunkSize = 0x8000;
@@ -33,8 +119,8 @@ const bytesToBinary = bytes => {
 };
 
 const decodeBase64Bytes = input => {
-  const compact = input.replace(/\s/g, '');
-  if (!compact || !/^[A-Za-z0-9+/]*={0,2}$/.test(compact)) {
+  const compact = input.replace(/[\t\n\f\r ]/g, '');
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(compact)) {
     throw new Error('invalid-base64');
   }
 
@@ -88,7 +174,11 @@ const decodeBase64UrlBytes = value => {
   if (!value || !/^[A-Za-z0-9_-]+$/.test(value)) {
     throw new Error('invalid-base64url');
   }
-  return decodeBase64Bytes(value.replace(/-/g, '+').replace(/_/g, '/'));
+  try {
+    return decodeBase64Bytes(value.replace(/-/g, '+').replace(/_/g, '/'));
+  } catch {
+    throw new Error('invalid-base64url');
+  }
 };
 
 const decodeBase64Url = value => {
@@ -103,7 +193,7 @@ const decodeBase64Url = value => {
 };
 
 const parseJwtObject = segment => {
-  const parsed = JSON.parse(decodeBase64Url(segment));
+  const parsed = parseJwtJson(decodeBase64Url(segment));
   if (!isRecord(parsed)) {
     throw new Error('invalid-jwt-json');
   }
@@ -113,16 +203,15 @@ const parseJwtObject = segment => {
 export const encodeValue = (type, input) => {
   switch (type) {
     case 'URL':
+      assertWellFormedString(input);
       return encodeURIComponent(input);
     case 'Base64':
       return encodeUtf8Base64(input);
     case 'Unicode':
       assertWellFormedString(input);
-      return Array.from(input)
-        .map(character => character.codePointAt(0))
-        .join(' ');
+      return [...input].map(character => character.codePointAt(0)).join(' ');
     case 'JWT': {
-      const parsed = JSON.parse(input);
+      const parsed = parseJwtJson(input);
       if (
         !isRecord(parsed) ||
         !isRecord(parsed.header) ||
@@ -148,7 +237,9 @@ export const decodeValue = (type, input) => {
     case 'Base64':
       return decodeUtf8Base64(input);
     case 'Unicode': {
-      const tokens = input.trim().split(/\s+/);
+      const trimmed = input.trim();
+      if (!trimmed) return '';
+      const tokens = trimmed.split(/\s+/);
       const codePoints = tokens.map(token => Number(token));
       const malformed = tokens.some((token, index) => {
         const codePoint = codePoints[index];

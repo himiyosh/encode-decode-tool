@@ -16,8 +16,15 @@ import {
   RefreshCw,
   ShieldCheck,
 } from 'lucide-react';
-import { getQrCanvasSize } from './qr-image.mjs';
+import {
+  getQrCanvasSize,
+  inspectQrImage,
+  isQrCapacityError,
+  MAX_QR_IMAGE_BYTES,
+  qrImageDimensionsMatch,
+} from './qr-image.mjs';
 import { countCodePoints } from './text-metrics.mjs';
+import { getTransformErrorMessage } from './transform-errors.mjs';
 import { decodeValue, encodeValue } from './transforms.mjs';
 
 const tabs = ['URL', 'Base64', 'JWT', 'Unicode', 'QR'];
@@ -28,14 +35,6 @@ const formatVisualMeta = {
   Unicode: { token: 'U+', icon: Languages },
   QR: { token: 'QR', icon: QrCode },
 };
-const MAX_QR_IMAGE_BYTES = 10 * 1024 * 1024;
-const SUPPORTED_QR_IMAGE_TYPES = new Set([
-  'image/png',
-  'image/jpeg',
-  'image/gif',
-  'image/webp',
-]);
-
 const formatMeta = {
   URL: {
     inputLabel: 'URL text',
@@ -255,24 +254,6 @@ const TabButton = ({
   );
 };
 
-const getTransformError = (type, action) => {
-  if (type === 'URL') {
-    return 'That text is not valid percent-encoded content. Check incomplete % sequences and try again.';
-  }
-  if (type === 'Base64') {
-    return 'That value is not valid UTF-8 Base64. Check its characters and padding, then try again.';
-  }
-  if (type === 'Unicode') {
-    return action === 'encode'
-      ? 'That text contains an unmatched Unicode surrogate and cannot be encoded without changing it.'
-      : 'Use decimal Unicode code points from 0 to 1114111, separated by spaces.';
-  }
-  if (type === 'JWT' && action === 'encode') {
-    return 'Use JSON with object-valued "header" and "payload" properties, and set header.alg to "none". This tool does not sign tokens.';
-  }
-  return 'That compact token is malformed. Check its object-valued header and payload, algorithm, and Base64URL signature segment.';
-};
-
 const getSuccessMessage = (type, action) => {
   if (type === 'JWT' && action === 'decode') {
     return 'JWT structure decoded. Its signature was not verified.';
@@ -282,12 +263,16 @@ const getSuccessMessage = (type, action) => {
 };
 
 const TabContent = ({ type, hidden }) => {
+  const emptyInputAllowed = type !== 'JWT';
   const [input, setInput] = useState('');
   const [output, setOutput] = useState('');
+  const [hasOutput, setHasOutput] = useState(false);
   const [status, setStatus] = useState({
     tone: 'idle',
     source: 'input',
-    message: 'Enter text to enable the transformation actions.',
+    message: emptyInputAllowed
+      ? 'Empty input is valid, or enter text to transform.'
+      : 'Enter text to enable the transformation actions.',
   });
   const [copyState, setCopyState] = useState('idle');
   const [outputSource, setOutputSource] = useState('');
@@ -313,17 +298,23 @@ const TabContent = ({ type, hidden }) => {
   const updateInput = nextInput => {
     setInput(nextInput);
     setCopyState('idle');
-    const nextOutputIsStale = Boolean(output && nextInput !== outputSource);
+    const nextOutputIsStale = hasOutput && nextInput !== outputSource;
     setStatus({
-      tone: nextOutputIsStale ? 'warning' : output ? 'success' : 'idle',
-      source: nextOutputIsStale || !output ? 'input' : 'result',
+      tone: nextOutputIsStale ? 'warning' : hasOutput ? 'success' : 'idle',
+      source: nextOutputIsStale || !hasOutput ? 'input' : 'result',
       message: nextInput
         ? nextOutputIsStale
           ? 'Input changed. Transform again to update the output.'
-          : output
+          : hasOutput
             ? 'Output matches the current input and is ready to copy.'
             : 'Ready to transform.'
-        : 'Enter text to enable the transformation actions.',
+        : nextOutputIsStale
+          ? 'Input changed. Transform again to update the output.'
+          : hasOutput
+            ? 'The empty result matches the current input and is ready to copy.'
+            : emptyInputAllowed
+              ? 'Empty input is valid, or enter text to transform.'
+              : 'Enter text to enable the transformation actions.',
     });
   };
 
@@ -336,6 +327,7 @@ const TabContent = ({ type, hidden }) => {
       const result =
         action === 'encode' ? encodeValue(type, input) : decodeValue(type, input);
       setOutput(result);
+      setHasOutput(true);
       setOutputSource(input);
       setCelebrationKey(value => value + 1);
       setStatus({
@@ -343,13 +335,14 @@ const TabContent = ({ type, hidden }) => {
         source: 'result',
         message: getSuccessMessage(type, action),
       });
-    } catch {
+    } catch (error) {
       setOutput('');
+      setHasOutput(false);
       setOutputSource('');
       setStatus({
         tone: 'error',
         source: 'input',
-        message: getTransformError(type, action),
+        message: getTransformErrorMessage(type, action, error),
       });
     }
   };
@@ -375,11 +368,12 @@ const TabContent = ({ type, hidden }) => {
     }
   };
 
-  const outputIsStale = Boolean(output && input !== outputSource);
+  const outputIsStale = hasOutput && input !== outputSource;
   const inputInvalid = status.tone === 'error' && status.source === 'input';
   const handleUseOutput = () => {
     setInput(output);
     setOutput('');
+    setHasOutput(false);
     setOutputSource('');
     setCopyState('idle');
     setStatus({
@@ -435,7 +429,7 @@ const TabContent = ({ type, hidden }) => {
           type="button"
           className="action-button action-button--primary"
           onClick={() => handleTransform('encode')}
-          disabled={input.length === 0}
+          disabled={!emptyInputAllowed && input.length === 0}
         >
           <RefreshCw aria-hidden="true" size={17} />
           <span>Encode</span>
@@ -444,7 +438,7 @@ const TabContent = ({ type, hidden }) => {
           type="button"
           className="action-button action-button--secondary"
           onClick={() => handleTransform('decode')}
-          disabled={input.length === 0}
+          disabled={!emptyInputAllowed && input.length === 0}
         >
           <ChevronRight aria-hidden="true" size={17} />
           <span>Decode</span>
@@ -453,7 +447,7 @@ const TabContent = ({ type, hidden }) => {
           type="button"
           className="action-button action-button--tertiary copy-button"
           onClick={handleCopy}
-          disabled={!output || outputIsStale}
+          disabled={!hasOutput || outputIsStale}
           data-state={copyState}
         >
           {copyState === 'copied' ? (
@@ -474,7 +468,7 @@ const TabContent = ({ type, hidden }) => {
       <div className="field">
         <div className="field-heading">
           <label htmlFor={`${id}-output`}>{meta.outputLabel}</label>
-          {output && (
+          {hasOutput && (
             <div className="field-heading__meta">
               <span className="field-count">{outputCharacterLabel}</span>
               <button
@@ -495,7 +489,7 @@ const TabContent = ({ type, hidden }) => {
           value={output}
           readOnly
           rows={5}
-          placeholder="Output appears here"
+          placeholder={hasOutput ? 'The result is empty' : 'Output appears here'}
           aria-describedby={`${id}-status`}
           data-stale={outputIsStale ? 'true' : undefined}
         />
@@ -511,6 +505,7 @@ function QRCodeTab({ hidden }) {
   const [imgSrc, setImgSrc] = useState('');
   const [generatedText, setGeneratedText] = useState('');
   const [decoded, setDecoded] = useState('');
+  const [hasDecoded, setHasDecoded] = useState(false);
   const [status, setStatus] = useState({
     tone: 'idle',
     message: 'Generate a QR code or choose an image to decode locally.',
@@ -524,6 +519,8 @@ function QRCodeTab({ hidden }) {
   const generateRequestId = useRef(0);
   const textRef = useRef('');
   const qrTextRef = useRef(null);
+  const pendingImageRef = useRef(null);
+  const pendingImageUrlRef = useRef('');
   const textCharacterLabel = useMemo(
     () => getCharacterLabel(countCodePoints(text)),
     [text],
@@ -533,11 +530,25 @@ function QRCodeTab({ hidden }) {
     [decoded],
   );
 
+  const cancelPendingImage = () => {
+    if (pendingImageRef.current) {
+      pendingImageRef.current.onload = null;
+      pendingImageRef.current.onerror = null;
+      pendingImageRef.current.src = '';
+      pendingImageRef.current = null;
+    }
+    if (pendingImageUrlRef.current) {
+      URL.revokeObjectURL(pendingImageUrlRef.current);
+      pendingImageUrlRef.current = '';
+    }
+  };
+
   useEffect(
     () => () => {
       window.clearTimeout(copyResetTimer.current);
       decodeRequestId.current += 1;
       generateRequestId.current += 1;
+      cancelPendingImage();
     },
     [],
   );
@@ -563,13 +574,15 @@ function QRCodeTab({ hidden }) {
           ? 'Text changed while the QR code was generated. Generate again before downloading.'
           : 'QR code generated and ready to download.',
       });
-    } catch {
+    } catch (error) {
       if (requestId !== generateRequestId.current) return;
       setImgSrc('');
       setGeneratedText('');
       setStatus({
         tone: 'error',
-        message: 'The QR code could not be generated. Check the text and try again.',
+        message: isQrCapacityError(error)
+          ? 'That text is too long for one QR code. Shorten it and generate again.'
+          : 'The QR code could not be generated. Check the text and try again.',
       });
     } finally {
       if (requestId === generateRequestId.current) {
@@ -578,97 +591,140 @@ function QRCodeTab({ hidden }) {
     }
   };
 
-  const onFileChange = e => {
+  const onFileChange = async e => {
     const input = e.currentTarget;
     const file = input.files?.[0];
     if (!file) return;
+    input.value = '';
     const requestId = ++decodeRequestId.current;
+    cancelPendingImage();
     setDecoded('');
+    setHasDecoded(false);
     setCopyState('idle');
 
-    if (!SUPPORTED_QR_IMAGE_TYPES.has(file.type)) {
-      setStatus({
-        tone: 'error',
-        message: 'That file is not an image. Choose a PNG, JPEG, GIF, or WebP image.',
-      });
-      input.value = '';
-      return;
-    }
     if (file.size > MAX_QR_IMAGE_BYTES) {
       setStatus({
         tone: 'error',
         message: 'That image is larger than 10 MB. Choose a smaller image.',
       });
-      input.value = '';
       return;
     }
 
-    setStatus({ tone: 'loading', message: 'Reading the QR image locally…' });
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (requestId !== decodeRequestId.current) return;
-      const img = new Image();
-      img.onload = async () => {
-        if (requestId !== decodeRequestId.current) return;
-        try {
-          const canvas = canvasRef.current;
-          const context = canvas?.getContext('2d', { willReadFrequently: true });
-          if (!canvas || !context) throw new Error('canvas-unavailable');
-          const canvasSize = getQrCanvasSize(img.naturalWidth, img.naturalHeight);
-          canvas.width = canvasSize.width;
-          canvas.height = canvasSize.height;
-          context.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
-          const imageData = context.getImageData(
-            0,
-            0,
-            canvasSize.width,
-            canvasSize.height,
-          );
-          const { default: jsQR } = await import('jsqr');
-          if (requestId !== decodeRequestId.current) return;
-          const code = jsQR(imageData.data, imageData.width, imageData.height);
-          if (!code?.data) {
-            setStatus({
-              tone: 'error',
-              message: 'No QR code was found in that image. Try a sharper, uncropped image.',
-            });
-            return;
-          }
-          setDecoded(code.data);
-          setCelebrationKey(value => value + 1);
-          setStatus({ tone: 'success', message: 'QR code decoded locally.' });
-        } catch (error) {
-          if (requestId !== decodeRequestId.current) return;
-          setDecoded('');
-          setStatus({
-            tone: 'error',
-            message:
-              error instanceof Error &&
-              error.message === 'image-dimensions-too-large'
-                ? 'That image has too many pixels to process safely. Choose an image under 24 megapixels.'
-                : 'The image could not be read. Try another image file.',
-          });
-        }
-      };
-      img.onerror = () => {
-        if (requestId !== decodeRequestId.current) return;
-        setStatus({
-          tone: 'error',
-          message: 'The image could not be opened. Try another image file.',
-        });
-      };
-      img.src = reader.result;
-    };
-    reader.onerror = () => {
+    setStatus({ tone: 'loading', message: 'Checking the QR image locally…' });
+    let bytes;
+    try {
+      bytes = new Uint8Array(await file.arrayBuffer());
+    } catch {
       if (requestId !== decodeRequestId.current) return;
       setStatus({
         tone: 'error',
         message: 'The browser could not read that file. Choose it again or try another image.',
       });
+      return;
+    }
+    if (requestId !== decodeRequestId.current) return;
+
+    let inspection;
+    try {
+      inspection = inspectQrImage(bytes);
+    } catch (error) {
+      if (requestId !== decodeRequestId.current) return;
+      const code = error instanceof Error ? error.message : '';
+      setStatus({
+        tone: 'error',
+        message:
+          code === 'image-dimensions-too-large'
+            ? 'That image has too many pixels to process safely. Choose an image under 24 megapixels.'
+            : code === 'invalid-image-dimensions'
+              ? 'That image reports invalid dimensions. Choose another image file.'
+              : 'That file is not a supported PNG, JPEG, GIF, or WebP image.',
+      });
+      return;
+    }
+    if (requestId !== decodeRequestId.current) return;
+
+    setStatus({ tone: 'loading', message: 'Decoding the QR image locally…' });
+    const imageUrl = URL.createObjectURL(file);
+    const img = new Image();
+    pendingImageRef.current = img;
+    pendingImageUrlRef.current = imageUrl;
+    let imageReleased = false;
+    const releaseImage = () => {
+      if (imageReleased) return;
+      imageReleased = true;
+      if (pendingImageRef.current === img) pendingImageRef.current = null;
+      if (pendingImageUrlRef.current === imageUrl) {
+        pendingImageUrlRef.current = '';
+      }
+      URL.revokeObjectURL(imageUrl);
     };
 
-    reader.readAsDataURL(file);
-    input.value = '';
+    img.onload = async () => {
+      if (requestId !== decodeRequestId.current) return;
+      try {
+        if (
+          !qrImageDimensionsMatch(
+            inspection.width,
+            inspection.height,
+            img.naturalWidth,
+            img.naturalHeight,
+          )
+        ) {
+          throw new Error('image-dimensions-mismatch');
+        }
+        const canvas = canvasRef.current;
+        const context = canvas?.getContext('2d', { willReadFrequently: true });
+        if (!canvas || !context) throw new Error('canvas-unavailable');
+        const canvasSize = getQrCanvasSize(
+          img.naturalWidth,
+          img.naturalHeight,
+        );
+        canvas.width = canvasSize.width;
+        canvas.height = canvasSize.height;
+        context.drawImage(img, 0, 0, canvasSize.width, canvasSize.height);
+        const imageData = context.getImageData(
+          0,
+          0,
+          canvasSize.width,
+          canvasSize.height,
+        );
+        releaseImage();
+        const { default: jsQR } = await import('jsqr');
+        if (requestId !== decodeRequestId.current) return;
+        const code = jsQR(imageData.data, imageData.width, imageData.height);
+        if (!code) {
+          setHasDecoded(false);
+          setStatus({
+            tone: 'error',
+            message: 'No QR code was found in that image. Try a sharper, uncropped image.',
+          });
+          return;
+        }
+        setDecoded(code.data);
+        setHasDecoded(true);
+        setCelebrationKey(value => value + 1);
+        setStatus({ tone: 'success', message: 'QR code decoded locally.' });
+      } catch {
+        if (requestId !== decodeRequestId.current) return;
+        setDecoded('');
+        setHasDecoded(false);
+        setStatus({
+          tone: 'error',
+          message: 'The image could not be read. Try another image file.',
+        });
+      } finally {
+        releaseImage();
+      }
+    };
+    img.onerror = () => {
+      if (requestId !== decodeRequestId.current) return;
+      releaseImage();
+      setStatus({
+        tone: 'error',
+        message: 'The image could not be opened. Try another image file.',
+      });
+    };
+    img.src = imageUrl;
   };
 
   const copyDecoded = async () => {
@@ -830,20 +886,22 @@ function QRCodeTab({ hidden }) {
         <div className="field">
           <div className="field-heading">
             <label htmlFor="qr-output">Decoded text</label>
-            {decoded && (
+            {hasDecoded && (
               <div className="field-heading__meta">
                 <span className="field-count">{decodedCharacterLabel}</span>
-                <button
-                  type="button"
-                  className="utility-button"
-                  onClick={() => {
-                    updateQrText(decoded);
-                    qrTextRef.current?.focus();
-                  }}
-                  aria-describedby="qr-status"
-                >
-                  Use to generate
-                </button>
+                {decoded && (
+                  <button
+                    type="button"
+                    className="utility-button"
+                    onClick={() => {
+                      updateQrText(decoded);
+                      qrTextRef.current?.focus();
+                    }}
+                    aria-describedby="qr-status"
+                  >
+                    Use to generate
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -852,7 +910,7 @@ function QRCodeTab({ hidden }) {
             name="qr-output"
             rows={3}
             readOnly
-            placeholder="Decoded text appears here"
+            placeholder={hasDecoded ? 'The decoded text is empty' : 'Decoded text appears here'}
             value={decoded}
             aria-describedby="qr-status"
           />
@@ -862,7 +920,7 @@ function QRCodeTab({ hidden }) {
           type="button"
           className="action-button action-button--tertiary copy-button"
           onClick={copyDecoded}
-          disabled={!decoded}
+          disabled={!hasDecoded}
           data-state={copyState}
         >
           {copyState === 'copied' ? (
