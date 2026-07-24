@@ -113,11 +113,36 @@ test('playful motion stays local, bounded, and reduced-motion safe', () => {
 
   assert.doesNotMatch(`${indexHtml}\n${interfaceCss}\n${tokenCss}`, /https?:\/\//);
   assert.match(interfaceCss, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(interfaceCss, /\.success-burst/);
   assert.match(interfaceCss, /\.tab-indicator/);
   assert.match(appSource, /className="signal-stage"/);
   assert.doesNotMatch(interfaceCss, /transition-all|cursor:\s*url|parallax/i);
   assert.doesNotMatch(reducedMotionCss, /animation:[^;]*infinite/i);
+});
+
+test('workbench accessibility and responsive contracts stay explicit', () => {
+  assert.match(appSource, /role="tab"/);
+  assert.match(appSource, /aria-orientation="horizontal"/);
+  assert.match(appSource, /focus\(\{ preventScroll: true \}\)/);
+  assert.match(appSource, /role="status"/);
+  assert.match(appSource, /aria-live="polite"/);
+  assert.match(appSource, /aria-errormessage=/);
+  assert.doesNotMatch(appSource, /role=\{[^}]*alert/);
+  assert.doesNotMatch(`${appSource}\n${interfaceCss}`, /success-burst|celebrationKey/);
+
+  assert.match(interfaceCss, /html,\s*\nbody\s*\{[\s\S]*?overflow-x:\s*clip/);
+  assert.doesNotMatch(
+    interfaceCss,
+    /\.app-shell\s*\{[^}]*overflow:\s*hidden/s,
+  );
+  assert.match(interfaceCss, /\.signal-stage\s*\{[\s\S]*?display:\s*none/);
+  assert.match(
+    interfaceCss,
+    /@media \(min-width: 36rem\)[\s\S]*?\.signal-stage\s*\{\s*display:\s*block/,
+  );
+  assert.match(interfaceCss, /white-space:\s*nowrap/);
+  assert.match(interfaceCss, /@media \(forced-colors: active\)/);
+  assert.match(interfaceCss, /@media \(prefers-contrast: more\)/);
+  assert.doesNotMatch(interfaceCss, /oklch\(/);
 });
 
 test('Tailwind uses the v4 PostCSS integration and CSS entry point', () => {

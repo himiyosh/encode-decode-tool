@@ -22,8 +22,8 @@ This is a web-based tool for encoding and decoding text in various formats such 
   oversized images before allocating the processing canvas.
 - Keep previous results visible for comparison while preventing stale one-click
   copy or QR download after the source changes.
-- Use a playful multi-accent workbench with state-reactive motion and a complete
-  reduced-motion alternative.
+- Use a playful multi-accent workbench with state-reactive motion and a complete reduced-motion alternative.
+- Prioritize the transformation controls on narrow screens while keeping the decorative signal stage on larger viewports.
 - Load a safe example for every format and see Unicode-aware character counts
   without leaving the current workflow.
 - Move transformed output back into the input, or decoded QR text into the
