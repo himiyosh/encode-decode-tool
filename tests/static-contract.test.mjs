@@ -24,6 +24,14 @@ const ciWorkflow = fs.readFileSync(
   new URL('../.github/workflows/ci.yml', import.meta.url),
   'utf8',
 );
+const dependabotConfig = fs.readFileSync(
+  new URL('../.github/dependabot.yml', import.meta.url),
+  'utf8',
+);
+const viteConfig = fs.readFileSync(
+  new URL('../vite.config.js', import.meta.url),
+  'utf8',
+);
 
 test('document enforces the local-only browser security contract', () => {
   const contentSecurityPolicy = indexHtml.match(
@@ -64,6 +72,38 @@ test('CI uses immutable actions with least-privilege permissions', () => {
     assert.match(reference, /^[^@\s]+@[a-f0-9]{40}$/);
   }
   assert.match(ciWorkflow, /permissions:\s*\n\s+contents:\s+read/);
+});
+
+test('all pull requests run the complete dependency validation gates', () => {
+  assert.match(ciWorkflow, /^on:\s*\n\s+pull_request:\s*$/m);
+  assert.match(ciWorkflow, /run:\s+npm ci --no-audit --no-fund/);
+  assert.match(ciWorkflow, /run:\s+npm run verify/);
+  assert.match(ciWorkflow, /run:\s+git diff --exit-code -- docs/);
+  assert.match(ciWorkflow, /run:\s+npm audit --audit-level=high/);
+  assert.match(packageJson.scripts.verify, /\bnpm test\b/);
+  assert.match(packageJson.scripts.verify, /\bnpm run check:lockfile\b/);
+  assert.match(packageJson.scripts.verify, /\bnpm run check:customizations\b/);
+  assert.match(packageJson.scripts.verify, /\bnpm run build\b/);
+  assert.match(viteConfig, /outDir:\s*['"]docs['"]/);
+});
+
+test('Dependabot groups compatible updates without grouping major migrations', () => {
+  assert.match(
+    dependabotConfig,
+    /react-ecosystem:\s*\n\s+dependency-type:\s+production/,
+  );
+  for (const dependency of ['react', 'react-dom', 'lucide-react']) {
+    assert.match(dependabotConfig, new RegExp(`^\\s+- ${dependency}$`, 'm'));
+  }
+  assert.match(
+    dependabotConfig,
+    /react-ecosystem:[\s\S]*?update-types:\s*\n\s+- minor\s*\n\s+- patch/,
+  );
+  assert.match(
+    dependabotConfig,
+    /development-tooling:\s*\n\s+dependency-type:\s+development[\s\S]*?update-types:\s*\n\s+- minor\s*\n\s+- patch/,
+  );
+  assert.doesNotMatch(dependabotConfig, /^\s+- major\s*$/m);
 });
 
 test('playful motion stays local, bounded, and reduced-motion safe', () => {

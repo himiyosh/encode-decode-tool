@@ -40,8 +40,8 @@ restrictive Content Security Policy also blocks unexpected remote connections.
   `node_modules/` and `dist/` directories are not versioned.
 - `npm run verify` runs tests, validates lockfile provenance and Copilot
   customizations, and creates the GitHub Pages site in `docs/`.
-- Pull requests and `main` pushes run the same verification in CI, and
-  Dependabot monitors npm and GitHub Actions updates.
+- Every pull request and `main` push runs tests, lockfile provenance and customization checks, a production build, a tracked `docs/` diff check, and a high-severity dependency audit in CI.
+- Dependabot groups compatible minor and patch updates for React, React DOM, and Lucide, keeps development tooling updates together, and leaves major migrations in separate pull requests for review.
 
 ## Live Demo
 

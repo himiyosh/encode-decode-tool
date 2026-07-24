@@ -1,75 +1,29 @@
-# Next Work Plan
+# Next Work Recovery Record
 
-Status: Planned; implementation has not started.
+Status: Phase 3 completed on 2026-07-25; this maintenance pull request remains subject to review and must not be merged automatically.
 
-## Objective
+## Completed migrations
 
-Complete the remaining major dependency migrations without weakening the tool's
-local-only privacy model, transform correctness, accessibility, or published
-GitHub Pages output.
+- React ecosystem PR #14 merged as `2699e0c7d35e7cb8cf1e3fc8fb732906c6a1fb20`.
+- Transform and QR hardening PR #15 merged as `85d8001153c2bcec37a818f4ba9c54f9f01542db`.
+- Tailwind 4 PR #16 merged as `33f9f9c8aa3f38d92877584f602f31abccda0c1d`.
+- The latest `main` CI run `30113339372` and GitHub Pages deployment run `30113338537` completed successfully for `33f9f9c`.
+- No superseded Dependabot pull requests remained open when Phase 3 began.
 
-## Guardrails
+## Phase 3 controls
 
-- Use Node.js 22 and `npm ci`.
-- Keep React, React DOM, and Lucide on mutually compatible versions.
-- Preserve the restrictive Content Security Policy and make no new remote
-  runtime requests.
-- Keep Tailwind 4 work separate from the React ecosystem migration.
-- Regenerate and commit `docs/` whenever a production build changes it.
-- Do not merge a migration until `npm run verify`, `git diff --check`, pull
-  request CI, and the relevant browser checks pass.
+Dependabot now groups minor and patch releases of React, React DOM, and Lucide so compatible versions are tested in one pull request. Development tooling minor and patch updates remain grouped separately. Major updates are intentionally excluded from groups and continue to arrive as individual reviewable migrations.
 
-## Phase 1: React ecosystem migration
+Every pull request runs the repository verification workflow. Static regression coverage now protects the pull request trigger, clean dependency installation, tests, lockfile provenance, customization checks, production build into tracked `docs/`, generated Pages diff check, and high-severity dependency audit.
 
-Create one branch, session, and pull request for the coordinated replacement of
-the superseded individual updates from PRs #9, #11, and #12.
+## Validation evidence
 
-1. Update `react`, `react-dom`, and `lucide-react` together.
-2. Review the React 19 and Lucide breaking changes that affect the current API
-   usage; do not use peer-dependency overrides.
-3. Update application code only where required by documented migration changes.
-4. Regenerate `package-lock.json` and `docs/`.
-5. Exercise URL, Base64, JWT, Unicode, QR generation, QR decoding, copy,
-   download, example, reset, and round-trip flows.
-6. Check keyboard focus, status announcements, reduced motion, narrow viewport
-   layout, console output, and network activity.
+Phase 3 was validated with Node.js 22 using `npm run verify`, `npm audit --audit-level=high`, `git diff --check`, a semantic inspection of `.github/dependabot.yml` against GitHub's supported group keys and update types, and inspection of the current CI and Pages runs.
 
-Completion requires a green pull request, a successful `main` build, and a
-successful GitHub Pages deployment.
+## Remaining external risk
 
-## Phase 2: Tailwind 4 migration
+The successful platform-managed Pages run still warns that its generated build job invokes `actions/checkout@v4` and `actions/upload-artifact@v4`, which target Node.js 20 and are forced onto Node.js 24. Current immutable upstream releases support Node.js 24, but this repository does not own the generated `pages-build-deployment` workflow and cannot update those references. The repository-owned CI action pins already target Node.js 24, so no substitute deployment workflow or misleading repository-side fix was added.
 
-Create a separate branch, session, and pull request for the migration represented
-by superseded PR #10.
+## Next actions
 
-1. Add the supported Tailwind 4 PostCSS integration and migrate configuration and
-   stylesheet entry points using the official upgrade guidance.
-2. Preserve the current design tokens, responsive behavior, focus treatment,
-   state styling, and reduced-motion behavior.
-3. Compare the production UI at 320 px, a representative desktop width, and
-   browser zoom before accepting generated CSS changes.
-4. Regenerate `package-lock.json` and `docs/`.
-5. Run the full repository and browser validation used in Phase 1.
-
-Do not combine this migration with feature work or the React ecosystem migration.
-
-## Phase 3: Dependabot maintenance
-
-After both migrations land:
-
-1. Group React, React DOM, and Lucide updates so compatible releases are tested
-   together.
-2. Confirm major framework updates cannot bypass the generated Pages output
-   check.
-3. Review the GitHub Pages build warning about platform actions still targeting
-   Node.js 20; treat it as upstream infrastructure unless a repository-owned
-   workflow can resolve it.
-
-## Definition of done
-
-- Both migration pull requests are merged independently.
-- `main` passes CI and dependency audit after each merge.
-- GitHub Pages serves the expected application after each merge.
-- No superseded dependency pull requests remain open.
-- A recovery point records the merged commits, validation evidence, and any
-  deferred risk.
+Review and merge the focused Phase 3 pull request after CI passes, then confirm the first grouped React ecosystem update contains only compatible minor or patch releases and monitor GitHub's platform-managed Pages workflow until it adopts Node.js 24-native action versions.
