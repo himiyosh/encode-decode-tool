@@ -40,7 +40,8 @@ restrictive Content Security Policy also blocks unexpected remote connections.
   `node_modules/` and `dist/` directories are not versioned.
 - `npm run verify` runs tests, validates lockfile provenance and Copilot
   customizations, and creates the GitHub Pages site in `docs/`.
-- Every pull request and `main` push runs tests, lockfile provenance and customization checks, a production build, a tracked `docs/` diff check, and a high-severity dependency audit in CI.
+- Install the Playwright Chromium binary once with `npx playwright install chromium`, then run `npm run test:e2e` for the focused real-browser regression suite. The suite builds and serves the production GitHub Pages output at `/encode-decode-tool/`.
+- Every pull request and `main` push runs tests, lockfile provenance and customization checks, a production build, the Chromium E2E suite, a tracked `docs/` diff check, and a high-severity dependency audit in CI.
 - Dependabot groups compatible minor and patch updates for React, React DOM, and Lucide, keeps development tooling updates together, and leaves major migrations in separate pull requests for review.
 
 ## Live Demo

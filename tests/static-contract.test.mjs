@@ -32,6 +32,10 @@ const viteConfig = fs.readFileSync(
   new URL('../vite.config.js', import.meta.url),
   'utf8',
 );
+const playwrightConfig = fs.readFileSync(
+  new URL('../playwright.config.mjs', import.meta.url),
+  'utf8',
+);
 
 test('document enforces the local-only browser security contract', () => {
   const contentSecurityPolicy = indexHtml.match(
@@ -78,12 +82,29 @@ test('all pull requests run the complete dependency validation gates', () => {
   assert.match(ciWorkflow, /^on:\s*\n\s+pull_request:\s*$/m);
   assert.match(ciWorkflow, /run:\s+npm ci --no-audit --no-fund/);
   assert.match(ciWorkflow, /run:\s+npm run verify/);
+  assert.match(
+    ciWorkflow,
+    /run:\s+npx playwright install --with-deps chromium/,
+  );
+  assert.match(ciWorkflow, /run:\s+npm run test:e2e/);
   assert.match(ciWorkflow, /run:\s+git diff --exit-code -- docs/);
   assert.match(ciWorkflow, /run:\s+npm audit --audit-level=high/);
   assert.match(packageJson.scripts.verify, /\bnpm test\b/);
   assert.match(packageJson.scripts.verify, /\bnpm run check:lockfile\b/);
   assert.match(packageJson.scripts.verify, /\bnpm run check:customizations\b/);
   assert.match(packageJson.scripts.verify, /\bnpm run build\b/);
+  assert.equal(packageJson.scripts['test:e2e'], 'playwright test');
+  assert.match(packageJson.devDependencies['@playwright/test'], /^\^1\./);
+  assert.match(playwrightConfig, /baseURL:\s*APP_URL/);
+  assert.match(playwrightConfig, /\/encode-decode-tool\//);
+  assert.match(playwrightConfig, /npm run build && npm run preview/);
+  assert.match(playwrightConfig, /browserName:\s*['"]chromium['"]/);
+  assert.equal(
+    ciWorkflow.indexOf('npm run verify') <
+      ciWorkflow.indexOf('npm run test:e2e'),
+    true,
+    'CI must build and verify before running the browser suite',
+  );
   assert.match(viteConfig, /outDir:\s*['"]docs['"]/);
 });
 
