@@ -13,8 +13,13 @@ This is a web-based tool for encoding and decoding text in various formats such 
 - Copy the output to the clipboard with a single click.
 - Download generated QR codes and decode QR images without uploading them.
 - Use the format tabs, transform controls, and file picker with a keyboard.
-- Reject malformed Base64, Unicode, and JWT input instead of returning plausible
-  output; JWT assembly is limited to explicit unsecured (`alg: "none"`) tokens.
+- Round-trip empty and non-ASCII UTF-8 Base64 and Unicode input while rejecting
+  malformed alphabets, non-scalar Unicode, and JWT numbers that would be rewritten
+  during JSON decoding.
+- Limit JWT assembly to explicit unsecured (`alg: "none"`) tokens; decoding validates
+  compact structure but never verifies a signature or authenticity.
+- Inspect PNG, JPEG, GIF, and WebP headers before QR decoding to reject malformed or
+  oversized images before allocating the processing canvas.
 - Keep previous results visible for comparison while preventing stale one-click
   copy or QR download after the source changes.
 - Use a playful multi-accent workbench with state-reactive motion and a complete
