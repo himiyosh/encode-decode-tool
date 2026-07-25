@@ -33,7 +33,7 @@ a {
 
 button,
 .action-button {
-  min-height: 3rem;
+  min-height: var(--control-height);
 }
 
 button:focus-visible,
@@ -44,7 +44,8 @@ a:focus-visible {
   outline-offset: var(--space-3xs);
 }
 
-button:disabled {
+button:disabled,
+button[aria-disabled="true"] {
   color: var(--color-disabled);
   cursor: not-allowed;
 }
@@ -53,17 +54,29 @@ button:disabled {
   display: none !important;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
 .app-shell {
   --active-halo: var(--color-cyan);
   position: relative;
   isolation: isolate;
   min-height: 100dvh;
-  overflow: hidden;
+  overflow: clip;
   padding: var(--space-xl) var(--space-md);
   background:
     radial-gradient(
       circle at 12% 0%,
-      oklch(33% 0.13 305 / 0.32),
+      color-mix(in oklch, var(--color-halo-violet-base) 32%, transparent),
       transparent 32rem
     ),
     linear-gradient(
@@ -142,9 +155,14 @@ button:disabled {
   gap: var(--space-xs);
   margin: 0;
   padding: var(--space-xs) var(--space-sm);
-  border: var(--rule-thin) solid oklch(86% 0.18 95 / 0.5);
+  border: var(--rule-thin) solid
+    color-mix(in oklch, var(--color-pear) 50%, transparent);
   border-radius: var(--radius-pill);
-  background: oklch(24% 0.055 276 / 0.85);
+  background: color-mix(
+    in oklch,
+    var(--color-kicker-surface) 85%,
+    transparent
+  );
   color: var(--color-pear);
   font-size: var(--text-xs);
   font-weight: 750;
@@ -164,6 +182,7 @@ button:disabled {
   font-weight: 850;
   letter-spacing: -0.035em;
   line-height: 1;
+  overflow-wrap: anywhere;
   text-wrap: balance;
 }
 
@@ -190,9 +209,11 @@ button:disabled {
   --signal-active: var(--color-cyan);
   --signal-edge: var(--color-cyan-deep);
   position: relative;
+  display: none;
   min-height: 10rem;
   overflow: hidden;
-  border: var(--rule-thin) solid oklch(70% 0.08 280 / 0.28);
+  border: var(--rule-thin) solid
+    color-mix(in oklch, var(--color-stage-edge) 28%, transparent);
   border-radius: var(--radius-lg);
   background: var(--color-surface-soft);
   box-shadow: var(--shadow-card);
@@ -223,8 +244,15 @@ button:disabled {
   position: absolute;
   inset: 0;
   background-image:
-    linear-gradient(oklch(90% 0.03 270 / 0.055) 1px, transparent 1px),
-    linear-gradient(90deg, oklch(90% 0.03 270 / 0.055) 1px, transparent 1px);
+    linear-gradient(
+      color-mix(in oklch, var(--color-grid-line) 5.5%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      color-mix(in oklch, var(--color-grid-line) 5.5%, transparent) 1px,
+      transparent 1px
+    );
   background-size: 1.25rem 1.25rem;
   mask-image: linear-gradient(to bottom, black, transparent);
 }
@@ -247,7 +275,8 @@ button:disabled {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   font-weight: 750;
-  box-shadow: 0 0.5rem 1.2rem -0.9rem oklch(3% 0.05 270 / 0.9);
+  box-shadow: 0 0.5rem 1.2rem -0.9rem
+    color-mix(in oklch, var(--color-shadow-deep) 90%, transparent);
   transition:
     transform var(--dur-medium) var(--ease-out),
     background-color var(--dur-short) var(--ease-out),
@@ -339,7 +368,8 @@ button:disabled {
 .workbench {
   position: relative;
   padding: var(--space-sm);
-  border: var(--rule-thin) solid oklch(70% 0.08 280 / 0.28);
+  border: var(--rule-thin) solid
+    color-mix(in oklch, var(--color-stage-edge) 28%, transparent);
   border-radius: calc(var(--radius-lg) + 0.25rem);
   background: var(--color-surface);
   box-shadow: var(--shadow-workbench);
@@ -360,7 +390,8 @@ button:disabled {
   height: 0.55rem;
   border-radius: 50%;
   background: var(--color-mint);
-  box-shadow: 0 0 0 0.2rem oklch(80% 0.16 150 / 0.13);
+  box-shadow: 0 0 0 0.2rem
+    color-mix(in oklch, var(--color-mint) 13%, transparent);
 }
 
 .workbench-meta strong {
@@ -436,8 +467,9 @@ button:disabled {
   background: transparent;
   color: var(--color-muted);
   cursor: pointer;
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
   font-weight: 750;
+  white-space: nowrap;
   transition: color var(--dur-short) var(--ease-out);
 }
 
@@ -498,13 +530,19 @@ button:disabled {
 
 .utility-button {
   padding-inline: var(--space-sm);
-  border: var(--rule-thin) solid oklch(78% 0.16 220 / 0.48);
+  border: var(--rule-thin) solid
+    color-mix(in oklch, var(--color-cyan) 48%, transparent);
   border-radius: var(--radius-pill);
-  background: oklch(25% 0.055 220 / 0.6);
+  background: color-mix(
+    in oklch,
+    var(--color-cyan-surface) 60%,
+    transparent
+  );
   color: var(--color-cyan);
   cursor: pointer;
   font-size: var(--text-xs);
   font-weight: 750;
+  white-space: nowrap;
   transition:
     background-color var(--dur-short) var(--ease-out),
     border-color var(--dur-short) var(--ease-out),
@@ -512,7 +550,8 @@ button:disabled {
     transform var(--dur-micro) var(--ease-press);
 }
 
-.utility-button:disabled {
+.utility-button:disabled,
+.utility-button[aria-disabled="true"] {
   border-color: var(--color-rule);
   background: var(--color-disabled-surface);
   color: var(--color-disabled);
@@ -559,7 +598,8 @@ textarea::placeholder {
 textarea:focus-visible,
 .file-input:focus-visible {
   border-color: var(--color-focus);
-  box-shadow: 0 0 0 0.25rem oklch(86% 0.18 95 / 0.12);
+  box-shadow: 0 0 0 0.25rem
+    color-mix(in oklch, var(--color-pear) 12%, transparent);
 }
 
 textarea[readonly] {
@@ -570,13 +610,17 @@ textarea[aria-invalid="true"] {
   border-color: var(--color-error);
 }
 
+input[aria-invalid="true"] {
+  border-color: var(--color-error);
+}
+
 textarea[data-stale="true"] {
   border-color: var(--color-warning);
   background-image:
     linear-gradient(
       135deg,
       transparent 0 46%,
-      oklch(86% 0.18 95 / 0.06) 46% 54%,
+      color-mix(in oklch, var(--color-pear) 6%, transparent) 46% 54%,
       transparent 54% 100%
     );
   background-size: 0.65rem 0.65rem;
@@ -599,6 +643,7 @@ textarea[data-stale="true"] {
   color: var(--color-page);
   cursor: pointer;
   font-weight: 750;
+  white-space: nowrap;
   box-shadow: 0 3px 0 var(--color-cyan-deep);
   transition:
     transform 140ms var(--ease-press),
@@ -621,7 +666,7 @@ textarea[data-stale="true"] {
   --btn-face: var(--color-pear);
   --btn-ink: var(--color-page);
   --btn-edge: var(--color-pear-deep);
-  --btn-cast: oklch(86% 0.18 95 / 0.22);
+  --btn-cast: color-mix(in oklch, var(--color-pear) 22%, transparent);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -636,6 +681,7 @@ textarea[data-stale="true"] {
   font-weight: 800;
   line-height: 1;
   text-decoration: none;
+  white-space: nowrap;
   box-shadow:
     0 4px 0 var(--btn-edge),
     0 7px 14px -5px var(--btn-cast);
@@ -649,18 +695,23 @@ textarea[data-stale="true"] {
 .action-button--secondary {
   --btn-face: var(--color-cyan);
   --btn-edge: var(--color-cyan-deep);
-  --btn-cast: oklch(78% 0.16 220 / 0.2);
+  --btn-cast: color-mix(in oklch, var(--color-cyan) 20%, transparent);
 }
 
 .action-button--tertiary {
   --btn-face: var(--color-surface-raised);
   --btn-ink: var(--color-neutral);
   --btn-edge: var(--color-rule-strong);
-  --btn-cast: oklch(3% 0.04 270 / 0.35);
+  --btn-cast: color-mix(
+    in oklch,
+    var(--color-shadow-base) 35%,
+    transparent
+  );
   border-color: var(--color-rule-strong);
 }
 
-.action-button:disabled {
+.action-button:disabled,
+.action-button[aria-disabled="true"] {
   --btn-face: var(--color-disabled-surface);
   --btn-ink: var(--color-disabled);
   --btn-edge: var(--color-rule);
@@ -684,6 +735,18 @@ textarea[data-stale="true"] {
   cursor: wait;
 }
 
+.utility-button:not(:disabled):not([aria-disabled="true"]):active {
+  transform: translateY(1px);
+}
+
+.action-button:not(:disabled):not([aria-disabled="true"]):active {
+  box-shadow:
+    0 1px 0 var(--btn-edge),
+    0 2px 6px -2px var(--btn-cast);
+  transform: translateY(3px);
+  transition-duration: 70ms;
+}
+
 .status-message {
   position: relative;
   display: grid;
@@ -699,6 +762,7 @@ textarea[data-stale="true"] {
   color: var(--color-muted);
   font-size: var(--text-sm);
   line-height: 1.45;
+  overflow-wrap: anywhere;
 }
 
 .status-icon {
@@ -706,50 +770,38 @@ textarea[data-stale="true"] {
 }
 
 .status-message[data-tone="error"] {
-  border-color: oklch(72% 0.2 24 / 0.55);
-  background: oklch(30% 0.09 24 / 0.32);
+  border-color: color-mix(in oklch, var(--color-coral) 55%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--color-error-surface) 32%,
+    transparent
+  );
   color: var(--color-error);
 }
 
 .status-message[data-tone="success"] {
-  padding-inline-end: 3rem;
-  border-color: oklch(80% 0.16 150 / 0.5);
-  background: oklch(30% 0.09 150 / 0.28);
+  border-color: color-mix(in oklch, var(--color-mint) 50%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--color-success-surface) 28%,
+    transparent
+  );
   color: var(--color-success);
 }
 
 .status-message[data-tone="loading"] {
-  border-color: oklch(78% 0.16 220 / 0.45);
+  border-color: color-mix(in oklch, var(--color-cyan) 45%, transparent);
   color: var(--color-cyan);
 }
 
 .status-message[data-tone="warning"] {
-  border-color: oklch(86% 0.18 95 / 0.5);
-  background: oklch(32% 0.1 95 / 0.25);
+  border-color: color-mix(in oklch, var(--color-pear) 50%, transparent);
+  background: color-mix(
+    in oklch,
+    var(--color-warning-surface) 25%,
+    transparent
+  );
   color: var(--color-warning);
-}
-
-.success-burst {
-  position: absolute;
-  inset-block-start: 50%;
-  inset-inline-end: var(--space-md);
-  width: 1.4rem;
-  height: 1.4rem;
-  background:
-    linear-gradient(
-      90deg,
-      transparent 44%,
-      var(--color-coral) 44% 56%,
-      transparent 56%
-    ),
-    linear-gradient(
-      0deg,
-      transparent 44%,
-      var(--color-coral) 44% 56%,
-      transparent 56%
-    );
-  pointer-events: none;
-  animation: success-burst 420ms var(--ease-out) forwards;
 }
 
 .is-spinning {
@@ -786,12 +838,20 @@ textarea[data-stale="true"] {
   background: var(--color-surface-soft);
 }
 
-.qr-section:nth-of-type(2) {
-  background: oklch(22% 0.045 220 / 0.7);
+.qr-section[aria-labelledby="qr-generate-heading"] {
+  background: color-mix(
+    in oklch,
+    var(--color-qr-generate-surface) 70%,
+    transparent
+  );
 }
 
-.qr-section:nth-of-type(3) {
-  background: oklch(22% 0.045 150 / 0.65);
+.qr-section[aria-labelledby="qr-decode-heading"] {
+  background: color-mix(
+    in oklch,
+    var(--color-qr-decode-surface) 65%,
+    transparent
+  );
 }
 
 .qr-section h2 {
@@ -812,7 +872,7 @@ textarea[data-stale="true"] {
   border-radius: var(--radius-lg);
   background-color: var(--color-field);
   background-image: radial-gradient(
-    oklch(78% 0.16 220 / 0.14) 1.2px,
+    color-mix(in oklch, var(--color-cyan) 14%, transparent) 1.2px,
     transparent 1.2px
   );
   background-size: 0.75rem 0.75rem;
@@ -829,7 +889,8 @@ textarea[data-stale="true"] {
   background: var(--color-ink);
   box-shadow:
     0 6px 0 var(--color-cyan-deep),
-    0 1.25rem 2rem -1rem oklch(3% 0.04 270 / 0.8);
+    0 1.25rem 2rem -1rem
+      color-mix(in oklch, var(--color-shadow-base) 80%, transparent);
   animation: qr-arrive var(--dur-long) var(--ease-out) both;
 }
 
@@ -869,6 +930,7 @@ textarea[data-stale="true"] {
   font-size: var(--text-sm);
   font-weight: 750;
   text-underline-offset: var(--space-2xs);
+  white-space: nowrap;
 }
 
 .decoded-link:active {
@@ -938,21 +1000,6 @@ textarea[data-stale="true"] {
   }
 }
 
-@keyframes success-burst {
-  0% {
-    opacity: 1;
-    transform: translateY(-50%) scale(0) rotate(0);
-  }
-  70% {
-    opacity: 0.9;
-    transform: translateY(-50%) scale(1.15) rotate(35deg);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(-50%) scale(1.35) rotate(45deg);
-  }
-}
-
 @keyframes spin {
   to {
     transform: rotate(1turn);
@@ -960,15 +1007,15 @@ textarea[data-stale="true"] {
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .utility-button:not(:disabled):hover {
+  .utility-button:not(:disabled):not([aria-disabled="true"]):hover {
     border-color: var(--color-cyan);
-    background: oklch(30% 0.075 220 / 0.78);
+    background: color-mix(
+      in oklch,
+      var(--color-cyan-surface-hover) 78%,
+      transparent
+    );
     color: var(--color-ink);
     transform: translateY(-1px);
-  }
-
-  .utility-button:not(:disabled):active {
-    transform: translateY(1px);
   }
 
   .tab-button:hover {
@@ -984,19 +1031,11 @@ textarea[data-stale="true"] {
     background-color: var(--color-field-hover);
   }
 
-  .action-button:not(:disabled):hover {
+  .action-button:not(:disabled):not([aria-disabled="true"]):hover {
     box-shadow:
       0 6px 0 var(--btn-edge),
       0 12px 22px -5px var(--btn-cast);
     transform: translateY(-2px);
-  }
-
-  .action-button:not(:disabled):active {
-    box-shadow:
-      0 1px 0 var(--btn-edge),
-      0 2px 6px -2px var(--btn-cast);
-    transform: translateY(3px);
-    transition-duration: 70ms;
   }
 
   .file-input::file-selector-button:hover {
@@ -1025,6 +1064,10 @@ textarea[data-stale="true"] {
   }
 
   .tab-button__icon {
+    display: block;
+  }
+
+  .signal-stage {
     display: block;
   }
 
@@ -1070,16 +1113,54 @@ textarea[data-stale="true"] {
 }
 
 @media (forced-colors: active) {
+  .app-shell {
+    background: Canvas;
+    color: CanvasText;
+  }
+
   .tab-indicator,
-  .signal-stage,
   .signal-buddy,
   .action-button,
+  .utility-button,
+  .file-input,
+  textarea,
   .status-message {
-    border: 2px solid ButtonText;
+    border: 2px solid CanvasText;
+    box-shadow: none;
+  }
+
+  .tab-indicator {
+    background: Highlight;
+    forced-color-adjust: none;
   }
 
   .tab-button[aria-selected="true"] {
     color: HighlightText;
+    forced-color-adjust: none;
+  }
+
+  button:disabled,
+  button[aria-disabled="true"] {
+    border-color: GrayText;
+    color: GrayText;
+  }
+
+  textarea[data-stale="true"] {
+    border-style: dashed;
+  }
+
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  a:focus-visible {
+    outline-color: Highlight;
+  }
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --color-muted: var(--color-neutral);
+    --color-rule: var(--color-rule-strong);
   }
 }
 
@@ -1099,10 +1180,6 @@ textarea[data-stale="true"] {
   .tool-panel:not([hidden]),
   .qr-preview img {
     transform: none;
-  }
-
-  .success-burst {
-    display: none;
   }
 
   .action-button:not(:disabled):hover,

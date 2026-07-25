@@ -37,6 +37,12 @@ jobs:
       - name: Verify repository
         run: npm run verify
 
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run browser regression suite
+        run: npm run test:e2e
+
       - name: Check generated GitHub Pages output
         run: git diff --exit-code -- docs
 
