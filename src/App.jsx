@@ -31,7 +31,7 @@ const App = () => {
   };
 
   return (
-    <main className="app-shell" data-active-format={activeTab.toLowerCase()}>
+    <main className="app-shell">
       <AppHeader activeTab={activeTab} />
 
       <section className="workbench" aria-label="Encoding and decoding workbench">

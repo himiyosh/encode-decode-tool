@@ -357,8 +357,7 @@ const QrCodePanel = ({ hidden }) => {
           type="button"
           onClick={generateQR}
           className="action-button action-button--primary"
-          disabled={!text}
-          aria-disabled={generating ? 'true' : undefined}
+          disabled={!text || generating}
           aria-busy={generating}
           aria-describedby="qr-status"
         >

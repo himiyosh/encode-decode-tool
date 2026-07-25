@@ -212,6 +212,24 @@ test('playful motion stays local, bounded, and reduced-motion safe', () => {
   assert.doesNotMatch(reducedMotionCss, /animation:[^;]*infinite/i);
 });
 
+test('hover feedback stays single-cue on the dark workbench', () => {
+  const hoverCss = interfaceCss.slice(
+    interfaceCss.indexOf('@media (hover: hover) and (pointer: fine)'),
+    interfaceCss.indexOf('@media (min-width: 24rem)'),
+  );
+
+  for (const selector of [
+    '\\.utility-button:not\\(:disabled\\):not\\(\\[aria-disabled="true"\\]\\):hover',
+    '\\.action-button:not\\(:disabled\\):not\\(\\[aria-disabled="true"\\]\\):hover',
+    '\\.file-input::file-selector-button:hover',
+  ]) {
+    assert.doesNotMatch(
+      hoverCss,
+      new RegExp(`${selector}\\s*\\{[^}]*?(?:box-shadow|border-color|color):`),
+    );
+  }
+});
+
 test('workbench accessibility and responsive contracts stay explicit', () => {
   assert.match(uiSource, /role="tab"/);
   assert.match(uiSource, /aria-orientation="horizontal"/);
@@ -279,6 +297,15 @@ test('transform and QR implementations stay in their cohesive panel owners', () 
   ]) {
     assert.ok(qrCodePanelSource.includes(marker), `QR panel must own ${marker}`);
   }
+});
+
+test('stale and loading actions use native disabled semantics', () => {
+  assert.match(
+    transformPanelSource,
+    /onClick=\{handleUseOutput\}\s+disabled=\{outputIsStale\}/,
+  );
+  assert.doesNotMatch(transformPanelSource, /handleUseOutputClick/);
+  assert.match(qrCodePanelSource, /disabled=\{!text \|\| generating\}/);
 });
 
 test('Tailwind uses the v4 PostCSS integration and CSS entry point', () => {
