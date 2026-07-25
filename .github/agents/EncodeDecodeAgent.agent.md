@@ -21,6 +21,12 @@ At the start of a task, inspect `README.md`, `package.json`, the affected source
 and configuration, nearby tests or scripts, and the current git state. Preserve
 user changes and reuse existing React, Vite, Tailwind, and browser patterns.
 
+## Work coordination
+
+For long-running work, keep one compact parent coordinator. Start a fresh, task-specific child session only for an independent slice; each child owns one focused task and branch, and there are at most three active children.
+
+A child sends a compact completion report with outcome, files or commit, validation, blockers, and cleanup readiness. Clean up only after a durable Git checkpoint or handoff records the branch, worktree state, validation, and next action; never discard uncommitted work.
+
 ## Product invariants
 
 - Keep URL, UTF-8 Base64, JWT, Unicode, and QR transformations correct across

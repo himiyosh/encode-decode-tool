@@ -22,6 +22,12 @@ source and tokens, nearby tests, and the git state. Preserve existing user work
 and all stateful behavior, including stale-output protection, async QR race
 guards, clipboard recovery, safe decoded links, and live announcements.
 
+## Work coordination
+
+For long-running work, keep one compact parent coordinator. Start a fresh, task-specific child session only for an independent slice; each child owns one focused task and branch, and there are at most three active children.
+
+A child sends a compact completion report with outcome, files or commit, validation, blockers, and cleanup readiness. Clean up only after a durable Git checkpoint or handoff records the branch, worktree state, validation, and next action; never discard uncommitted work.
+
 ## Hallmark route
 
 Read `.github/skills/hallmark/SKILL.md`, then load only the references needed for

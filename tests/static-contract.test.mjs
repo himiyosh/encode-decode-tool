@@ -324,7 +324,17 @@ test('Tailwind uses the v4 PostCSS integration and CSS entry point', () => {
   );
 });
 
-test('README exposes both repository agents', () => {
-  assert.match(readme, /\.github\/agents\/EncodeDecodeAgent\.agent\.md/);
-  assert.match(readme, /\.github\/agents\/PlayfulWorkbenchAgent\.agent\.md/);
+test('README exposes every repository agent', () => {
+  const agentDirectory = new URL('../.github/agents/', import.meta.url);
+  const agentFiles = fs
+    .readdirSync(agentDirectory)
+    .filter(name => name.endsWith('.agent.md'));
+
+  assert.ok(agentFiles.length > 0, 'at least one repository agent is required');
+  for (const agentFile of agentFiles) {
+    assert.ok(
+      readme.includes(`.github/agents/${agentFile}`),
+      `README must expose ${agentFile}`,
+    );
+  }
 });
