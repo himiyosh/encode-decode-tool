@@ -50,6 +50,7 @@ const makeJpegHeader = (width, height) => {
   bytes.set([0xff, 0xd8, 0xff, 0xc0, 0x00, 0x11, 0x08]);
   writeUint16(bytes, 7, height);
   writeUint16(bytes, 9, width);
+  bytes.set([0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x01, 0x03, 0x11, 0x01], 11);
   return bytes;
 };
 
@@ -61,6 +62,37 @@ const makeWebpHeader = (width, height) => {
   writeUint32(bytes, 16, 10, true);
   writeUint24LittleEndian(bytes, 24, width - 1);
   writeUint24LittleEndian(bytes, 27, height - 1);
+  return bytes;
+};
+
+const makeWebpLosslessHeader = (width, height) => {
+  const bytes = new Uint8Array(26);
+  const widthMinusOne = width - 1;
+  const heightMinusOne = height - 1;
+
+  bytes.set([0x52, 0x49, 0x46, 0x46]);
+  writeUint32(bytes, 4, bytes.length - 8, true);
+  bytes.set([0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x4c], 8);
+  writeUint32(bytes, 16, 5, true);
+  bytes[20] = 0x2f;
+  bytes[21] = widthMinusOne & 0xff;
+  bytes[22] =
+    ((widthMinusOne >>> 8) & 0x3f) | ((heightMinusOne & 0x03) << 6);
+  bytes[23] = (heightMinusOne >>> 2) & 0xff;
+  bytes[24] = (heightMinusOne >>> 10) & 0x0f;
+  return bytes;
+};
+
+const makeWebpLossyHeader = (width, height) => {
+  const bytes = new Uint8Array(30);
+
+  bytes.set([0x52, 0x49, 0x46, 0x46]);
+  writeUint32(bytes, 4, bytes.length - 8, true);
+  bytes.set([0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20], 8);
+  writeUint32(bytes, 16, 10, true);
+  bytes.set([0x9d, 0x01, 0x2a], 23);
+  writeUint16(bytes, 26, width, true);
+  writeUint16(bytes, 28, height, true);
   return bytes;
 };
 
@@ -245,6 +277,8 @@ test('QR image inspection recognizes supported signatures without MIME metadata'
     [makeGifHeader(320, 240), { type: 'image/gif', width: 320, height: 240 }],
     [makeJpegHeader(640, 480), { type: 'image/jpeg', width: 640, height: 480 }],
     [makeWebpHeader(1024, 512), { type: 'image/webp', width: 1024, height: 512 }],
+    [makeWebpLosslessHeader(1024, 512), { type: 'image/webp', width: 1024, height: 512 }],
+    [makeWebpLossyHeader(1024, 512), { type: 'image/webp', width: 1024, height: 512 }],
   ]) {
     const { type, width, height } = inspectQrImage(bytes);
     assert.deepEqual({ type, width, height }, expected);
@@ -263,6 +297,30 @@ test('QR image inspection rejects malformed headers and unsafe dimensions early'
   assert.throws(
     () => inspectQrImage(makeGifHeader(0, 100)),
     /invalid-image-dimensions/,
+  );
+  const incompleteJpegFrame = makeJpegHeader(1, 1);
+  writeUint16(incompleteJpegFrame, 4, 7);
+  assert.throws(
+    () => inspectQrImage(incompleteJpegFrame),
+    /invalid-image-file/,
+  );
+  const inconsistentJpegFrame = makeJpegHeader(1, 1);
+  inconsistentJpegFrame[11] = 2;
+  assert.throws(
+    () => inspectQrImage(inconsistentJpegFrame),
+    /invalid-image-file/,
+  );
+  const webpChunkOutsideContainer = makeWebpHeader(1, 1);
+  writeUint32(webpChunkOutsideContainer, 4, 4, true);
+  assert.throws(
+    () => inspectQrImage(webpChunkOutsideContainer),
+    /invalid-image-file/,
+  );
+  const incompleteWebpFrame = makeWebpLossyHeader(1, 1);
+  writeUint32(incompleteWebpFrame, 16, 3, true);
+  assert.throws(
+    () => inspectQrImage(incompleteWebpFrame),
+    /invalid-image-file/,
   );
   assert.equal(MAX_QR_IMAGE_BYTES, 10 * 1024 * 1024);
 });
