@@ -317,9 +317,15 @@ test('QR image inspection rejects malformed headers and unsafe dimensions early'
     /invalid-image-file/,
   );
   const incompleteWebpFrame = makeWebpLossyHeader(1, 1);
-  writeUint32(incompleteWebpFrame, 16, 3, true);
+  writeUint32(incompleteWebpFrame, 16, 8, true);
   assert.throws(
     () => inspectQrImage(incompleteWebpFrame),
+    /invalid-image-file/,
+  );
+  const webpWithInvalidPadding = makeWebpLosslessHeader(1, 1);
+  webpWithInvalidPadding[25] = 1;
+  assert.throws(
+    () => inspectQrImage(webpWithInvalidPadding),
     /invalid-image-file/,
   );
   assert.equal(MAX_QR_IMAGE_BYTES, 10 * 1024 * 1024);
