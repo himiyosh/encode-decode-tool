@@ -110,6 +110,9 @@ function readIndentedBlock(lines, start, end) {
     block.push(line.replace(/^[ \t]+/, ''));
     index += 1;
   }
+  while (block.length && block[block.length - 1] === '') {
+    block.pop();
+  }
   return { block, nextIndex: index };
 }
 

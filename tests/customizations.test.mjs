@@ -60,6 +60,31 @@ test('profile parser accepts folded strings, nested lists, and CRLF frontmatter'
   assert.match(prompt, /## Work coordination/);
 });
 
+test('profile parser allows blank separators after boolean and null scalars', () => {
+  const booleanProfile = parseProfile(`---
+name: BooleanSeparatorAgent
+description: "A profile with a boolean scalar."
+user-invocable: true
+
+owner: test
+---
+`);
+  const nullProfile = parseProfile(`---
+name: NullSeparatorAgent
+description: "A profile with a null scalar."
+user-invocable: true
+optional: null
+
+owner: test
+---
+`);
+
+  assert.equal(booleanProfile.frontmatter['user-invocable'], true);
+  assert.equal(booleanProfile.frontmatter.owner, 'test');
+  assert.equal(nullProfile.frontmatter.optional, null);
+  assert.equal(nullProfile.frontmatter.owner, 'test');
+});
+
 test('profile validation discovers every matching agent file without a fixed inventory', async () => {
   await withTempAgents(async agentsRoot => {
     const profiles = ['AlphaAgent', 'ZetaAgent'];
