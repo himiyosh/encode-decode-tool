@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
 import {
   parseProfile,
+  validateAgent,
   validateAgentProfiles,
 } from '../scripts/check-customizations.mjs';
 
@@ -14,6 +15,25 @@ const COORDINATION_RULES = `## Work coordination
 Keep one compact parent coordinator. Start a fresh, task-specific child session for each independent slice; each child owns one focused task and branch, and there are at most three active children.
 
 Send a compact completion report. Clean up only after a durable Git checkpoint or handoff.`;
+const ROLE_SPECIFIC_MARKERS = {
+  EncodeDecodeAgent: [
+    '.github/skills/hallmark/SKILL.md',
+    '**default**',
+    '**audit**',
+    '**redesign**',
+    '**study**',
+    'npm run build',
+    'npm run check:customizations',
+  ],
+  PlayfulWorkbenchAgent: [
+    '.github/skills/hallmark/SKILL.md',
+    'references/genres/playful.md',
+    'references/themes/hum.md',
+    'prefers-reduced-motion',
+    'npm run verify',
+    'npm run check:customizations',
+  ],
+};
 
 function agentProfile(name) {
   return `---
@@ -127,4 +147,26 @@ test('profile validation rejects filename drift and undocumented profiles', asyn
       /README must discover DocumentedAgent/,
     );
   });
+});
+
+test('profile validation preserves role-specific Hallmark and QA contracts', async () => {
+  for (const [name, markers] of Object.entries(ROLE_SPECIFIC_MARKERS)) {
+    const file = `${name}.agent.md`;
+    const source = await readFile(
+      new URL(`../.github/agents/${file}`, import.meta.url),
+      'utf8',
+    );
+
+    for (const marker of markers) {
+      assert.throws(
+        () =>
+          validateAgent(
+            source.replace(marker, 'removed-contract-marker'),
+            file,
+          ),
+        /must retain/,
+        `${name} must reject removal of ${marker}`,
+      );
+    }
+  }
 });

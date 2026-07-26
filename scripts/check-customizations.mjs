@@ -28,6 +28,31 @@ const REQUIRED_AGENT_PROMPT_MARKERS = [
   ['compact completion report', 'a compact completion report'],
   ['durable Git checkpoint or handoff', 'a durable cleanup gate'],
 ];
+const REQUIRED_AGENT_PROMPT_MARKERS_BY_NAME = new Map([
+  [
+    'EncodeDecodeAgent',
+    [
+      ['.github/skills/hallmark/SKILL.md', 'the Hallmark skill route'],
+      ['**default**', 'the Hallmark default mode'],
+      ['**audit**', 'the Hallmark audit mode'],
+      ['**redesign**', 'the Hallmark redesign mode'],
+      ['**study**', 'the Hallmark study mode'],
+      ['npm run build', 'the production build requirement'],
+      ['npm run check:customizations', 'the customization validation requirement'],
+    ],
+  ],
+  [
+    'PlayfulWorkbenchAgent',
+    [
+      ['.github/skills/hallmark/SKILL.md', 'the Hallmark skill route'],
+      ['references/genres/playful.md', 'the playful genre reference'],
+      ['references/themes/hum.md', 'the Hum theme reference'],
+      ['prefers-reduced-motion', 'the reduced-motion requirement'],
+      ['npm run verify', 'the repository verification requirement'],
+      ['npm run check:customizations', 'the customization validation requirement'],
+    ],
+  ],
+]);
 
 function check(condition, message) {
   if (!condition) throw new Error(message);
@@ -213,7 +238,11 @@ export function validateAgent(source, file) {
     profileBytes < MAX_PROFILE_BYTES,
     `${name} profile exceeds ${MAX_PROFILE_BYTES} bytes`,
   );
-  for (const [marker, description] of REQUIRED_AGENT_PROMPT_MARKERS) {
+  const requiredMarkers = [
+    ...REQUIRED_AGENT_PROMPT_MARKERS,
+    ...(REQUIRED_AGENT_PROMPT_MARKERS_BY_NAME.get(name) ?? []),
+  ];
+  for (const [marker, description] of requiredMarkers) {
     check(agent.prompt.includes(marker), `${name} must retain ${description}`);
   }
 
