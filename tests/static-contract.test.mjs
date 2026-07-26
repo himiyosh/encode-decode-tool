@@ -212,6 +212,24 @@ test('playful motion stays local, bounded, and reduced-motion safe', () => {
   assert.doesNotMatch(reducedMotionCss, /animation:[^;]*infinite/i);
 });
 
+test('hover feedback stays single-cue on the dark workbench', () => {
+  const hoverCss = interfaceCss.slice(
+    interfaceCss.indexOf('@media (hover: hover) and (pointer: fine)'),
+    interfaceCss.indexOf('@media (min-width: 24rem)'),
+  );
+
+  for (const selector of [
+    '\\.utility-button:not\\(:disabled\\):not\\(\\[aria-disabled="true"\\]\\):hover',
+    '\\.action-button:not\\(:disabled\\):not\\(\\[aria-disabled="true"\\]\\):hover',
+    '\\.file-input::file-selector-button:hover',
+  ]) {
+    assert.doesNotMatch(
+      hoverCss,
+      new RegExp(`${selector}\\s*\\{[^}]*?(?:box-shadow|border-color|color):`),
+    );
+  }
+});
+
 test('workbench accessibility and responsive contracts stay explicit', () => {
   assert.match(uiSource, /role="tab"/);
   assert.match(uiSource, /aria-orientation="horizontal"/);
@@ -281,6 +299,15 @@ test('transform and QR implementations stay in their cohesive panel owners', () 
   }
 });
 
+test('stale and loading actions use native disabled semantics', () => {
+  assert.match(
+    transformPanelSource,
+    /onClick=\{handleUseOutput\}\s+disabled=\{outputIsStale\}/,
+  );
+  assert.doesNotMatch(transformPanelSource, /handleUseOutputClick/);
+  assert.match(qrCodePanelSource, /disabled=\{!text \|\| generating\}/);
+});
+
 test('Tailwind uses the v4 PostCSS integration and CSS entry point', () => {
   assert.match(packageJson.devDependencies.tailwindcss, /^\^4\./);
   assert.match(packageJson.devDependencies['@tailwindcss/postcss'], /^\^4\./);
@@ -297,7 +324,17 @@ test('Tailwind uses the v4 PostCSS integration and CSS entry point', () => {
   );
 });
 
-test('README exposes both repository agents', () => {
-  assert.match(readme, /\.github\/agents\/EncodeDecodeAgent\.agent\.md/);
-  assert.match(readme, /\.github\/agents\/PlayfulWorkbenchAgent\.agent\.md/);
+test('README exposes every repository agent', () => {
+  const agentDirectory = new URL('../.github/agents/', import.meta.url);
+  const agentFiles = fs
+    .readdirSync(agentDirectory)
+    .filter(name => name.endsWith('.agent.md'));
+
+  assert.ok(agentFiles.length > 0, 'at least one repository agent is required');
+  for (const agentFile of agentFiles) {
+    assert.ok(
+      readme.includes(`.github/agents/${agentFile}`),
+      `README must expose ${agentFile}`,
+    );
+  }
 });

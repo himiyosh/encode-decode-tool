@@ -159,26 +159,10 @@ test('stale results block one-click actions while current results can be copied'
   await expect(status).toContainText(staleMessage);
   await expect(copy).toBeDisabled();
   const useAsInput = panel.getByRole('button', { name: 'Use as input' });
-  await expect(useAsInput).toHaveAttribute('aria-disabled', 'true');
   await expect(useAsInput).toBeDisabled();
+  await expect(useAsInput).toHaveJSProperty('disabled', true);
   await expect(output).toHaveAttribute('data-stale', 'true');
 
-  await useAsInput.evaluate(element => {
-    element.addEventListener(
-      'click',
-      () => {
-        element.dataset.keyboardActivated = 'true';
-      },
-      { once: true },
-    );
-  });
-  await useAsInput.focus();
-  await expect(useAsInput).toBeFocused();
-  await page.keyboard.press('Enter');
-
-  await expect(useAsInput).toHaveAttribute('data-keyboard-activated', 'true');
-  await expect(useAsInput).toBeFocused();
-  await expect(useAsInput).toHaveAttribute('aria-disabled', 'true');
   await expect(copy).toBeDisabled();
   await expect(input).toHaveValue('changed');
   await expect(output).toHaveValue('hello%20world');

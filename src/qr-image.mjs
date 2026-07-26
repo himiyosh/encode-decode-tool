@@ -47,7 +47,14 @@ const parseJpegDimensions = bytes => {
       marker <= 0xcf &&
       ![0xc4, 0xc8, 0xcc].includes(marker);
     if (isStartOfFrame) {
-      if (segmentLength < 7) throw new Error('invalid-image-file');
+      if (segmentLength < 11) throw new Error('invalid-image-file');
+      const componentCount = bytes[offset + 7];
+      if (
+        componentCount === 0 ||
+        segmentLength !== 8 + componentCount * 3
+      ) {
+        throw new Error('invalid-image-file');
+      }
       return {
         width: readUint16BigEndian(bytes, offset + 5),
         height: readUint16BigEndian(bytes, offset + 3),
@@ -59,19 +66,32 @@ const parseJpegDimensions = bytes => {
 };
 
 const parseWebpDimensions = bytes => {
-  if (bytes.length < 30) throw new Error('invalid-image-file');
-  if (readUint32LittleEndian(bytes, 4) + 8 > bytes.length) {
+  if (bytes.length < 20) throw new Error('invalid-image-file');
+
+  const fileSize = readUint32LittleEndian(bytes, 4);
+  const fileEnd = fileSize + 8;
+  if (fileSize < 4 || fileSize % 2 !== 0 || fileEnd > bytes.length) {
     throw new Error('invalid-image-file');
   }
+
   const chunkType = String.fromCharCode(...bytes.subarray(12, 16));
   const chunkLength = readUint32LittleEndian(bytes, 16);
-  if (chunkType === 'VP8X' && chunkLength >= 10) {
+  const dataOffset = 20;
+  const paddedChunkEnd = dataOffset + chunkLength + (chunkLength % 2);
+  if (
+    paddedChunkEnd > fileEnd ||
+    (chunkLength % 2 && bytes[dataOffset + chunkLength] !== 0)
+  ) {
+    throw new Error('invalid-image-file');
+  }
+
+  if (chunkType === 'VP8X' && chunkLength === 10) {
     return {
       width: readUint24LittleEndian(bytes, 24) + 1,
       height: readUint24LittleEndian(bytes, 27) + 1,
     };
   }
-  if (chunkType === 'VP8L' && bytes[20] === 0x2f) {
+  if (chunkType === 'VP8L' && chunkLength >= 5 && bytes[20] === 0x2f) {
     return {
       width: 1 + bytes[21] + ((bytes[22] & 0x3f) << 8),
       height:
@@ -81,7 +101,11 @@ const parseWebpDimensions = bytes => {
         ((bytes[24] & 0x0f) << 10),
     };
   }
-  if (chunkType === 'VP8 ' && matches(bytes, 23, [0x9d, 0x01, 0x2a])) {
+  if (
+    chunkType === 'VP8 ' &&
+    chunkLength >= 10 &&
+    matches(bytes, 23, [0x9d, 0x01, 0x2a])
+  ) {
     return {
       width: readUint16LittleEndian(bytes, 26) & 0x3fff,
       height: readUint16LittleEndian(bytes, 28) & 0x3fff,

@@ -5,33 +5,6 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = fileURLToPath(new URL('../', import.meta.url));
 const AGENTS_ROOT = join(ROOT, '.github/agents');
-const AGENT_PROFILES = [
-  {
-    file: 'EncodeDecodeAgent.agent.md',
-    name: 'EncodeDecodeAgent',
-    required: [
-      '.github/skills/hallmark/SKILL.md',
-      '**default**',
-      '**audit**',
-      '**redesign**',
-      '**study**',
-      'npm run build',
-      'npm run check:customizations',
-    ],
-  },
-  {
-    file: 'PlayfulWorkbenchAgent.agent.md',
-    name: 'PlayfulWorkbenchAgent',
-    required: [
-      '.github/skills/hallmark/SKILL.md',
-      'references/genres/playful.md',
-      'references/themes/hum.md',
-      'prefers-reduced-motion',
-      'npm run verify',
-      'npm run check:customizations',
-    ],
-  },
-];
 const HALLMARK_ROOT = join(ROOT, '.github/skills/hallmark');
 const SKILL_PATH = join(HALLMARK_ROOT, 'SKILL.md');
 const REFERENCES_ROOT = join(HALLMARK_ROOT, 'references');
@@ -46,74 +19,256 @@ const EXPECTED_LICENSE_SHA256 =
   '06088a8b94598626f27612dea42300154bf7be967c85d9d3eee4490cb056af7d';
 const MAX_PROMPT_CHARACTERS = 30_000;
 const MAX_PROFILE_BYTES = 24_000;
+const REQUIRED_AGENT_PROMPT_MARKERS = [
+  ['## Work coordination', 'a work coordination section'],
+  ['compact parent coordinator', 'a compact parent coordinator'],
+  ['fresh, task-specific child session', 'fresh task-specific child sessions'],
+  ['one focused task and branch', 'one focused task and branch per child'],
+  ['at most three active children', 'a three-child concurrency limit'],
+  ['compact completion report', 'a compact completion report'],
+  ['durable Git checkpoint or handoff', 'a durable cleanup gate'],
+];
+const REQUIRED_AGENT_PROMPT_MARKERS_BY_NAME = new Map([
+  [
+    'EncodeDecodeAgent',
+    [
+      ['.github/skills/hallmark/SKILL.md', 'the Hallmark skill route'],
+      ['**default**', 'the Hallmark default mode'],
+      ['**audit**', 'the Hallmark audit mode'],
+      ['**redesign**', 'the Hallmark redesign mode'],
+      ['**study**', 'the Hallmark study mode'],
+      ['npm run build', 'the production build requirement'],
+      ['npm run check:customizations', 'the customization validation requirement'],
+    ],
+  ],
+  [
+    'PlayfulWorkbenchAgent',
+    [
+      ['.github/skills/hallmark/SKILL.md', 'the Hallmark skill route'],
+      ['references/genres/playful.md', 'the playful genre reference'],
+      ['references/themes/hum.md', 'the Hum theme reference'],
+      ['prefers-reduced-motion', 'the reduced-motion requirement'],
+      ['npm run verify', 'the repository verification requirement'],
+      ['npm run check:customizations', 'the customization validation requirement'],
+    ],
+  ],
+]);
 
 function check(condition, message) {
   if (!condition) throw new Error(message);
 }
 
-function parseScalar(value) {
-  const trimmed = value.trim();
+function stripInlineComment(value) {
+  let quote;
+  let escaped = false;
+
+  for (let index = 0; index < value.length; index += 1) {
+    const character = value[index];
+    if (quote === '"') {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        quote = undefined;
+      }
+      continue;
+    }
+    if (quote === "'") {
+      if (character === "'") {
+        if (value[index + 1] === "'") {
+          index += 1;
+        } else {
+          quote = undefined;
+        }
+      }
+      continue;
+    }
+    if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === '#' && (index === 0 || /\s/.test(value[index - 1]))) {
+      return value.slice(0, index).trimEnd();
+    }
+  }
+
+  return value.trimEnd();
+}
+
+function parseScalar(value, lineNumber) {
+  const trimmed = stripInlineComment(value).trim();
+  check(trimmed, `frontmatter value on line ${lineNumber} must not be empty`);
   if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+    trimmed.startsWith('"') ||
+    trimmed.startsWith("'")
   ) {
-    return trimmed.slice(1, -1);
+    const quote = trimmed[0];
+    check(
+      trimmed.length >= 2 && trimmed.endsWith(quote),
+      `unterminated quoted frontmatter value on line ${lineNumber}`,
+    );
+    if (quote === '"') {
+      try {
+        return JSON.parse(trimmed);
+      } catch {
+        throw new Error(`invalid double-quoted frontmatter value on line ${lineNumber}`);
+      }
+    }
+    return trimmed.slice(1, -1).replaceAll("''", "'");
   }
   if (trimmed === 'true') return true;
   if (trimmed === 'false') return false;
+  if (trimmed === 'null' || trimmed === '~') return null;
   return trimmed;
 }
 
-function parseProfile(source) {
-  check(source.startsWith('---\n'), 'frontmatter must start with ---');
-  const delimiter = source.indexOf('\n---\n', 4);
+function readIndentedBlock(lines, start, end) {
+  const block = [];
+  let index = start;
+  while (index < end) {
+    const line = lines[index];
+    if (!line) {
+      block.push('');
+      index += 1;
+      continue;
+    }
+    if (!/^[ \t]/.test(line)) break;
+    block.push(line.replace(/^[ \t]+/, ''));
+    index += 1;
+  }
+  while (block.length && block[block.length - 1] === '') {
+    block.pop();
+  }
+  return { block, nextIndex: index };
+}
+
+function foldBlock(lines) {
+  return lines
+    .join('\n')
+    .split(/\n{2,}/)
+    .map(paragraph => paragraph.replace(/\n/g, ' ').trim())
+    .filter(Boolean)
+    .join('\n\n');
+}
+
+export function parseProfile(source) {
+  const lines = source.replace(/\r\n?/g, '\n').split('\n');
+  check(lines[0] === '---', 'frontmatter must start with ---');
+  const delimiter = lines.indexOf('---', 1);
   check(delimiter !== -1, 'frontmatter must end with ---');
 
   const frontmatter = {};
-  for (const [index, line] of source.slice(4, delimiter).split('\n').entries()) {
-    if (!line.trim() || line.trimStart().startsWith('#')) continue;
-    const match = line.match(/^([A-Za-z][A-Za-z0-9-]*):\s*(.+)$/);
-    check(match, `unsupported frontmatter syntax on line ${index + 2}`);
-    frontmatter[match[1]] = parseScalar(match[2]);
+  for (let index = 1; index < delimiter; ) {
+    const line = lines[index];
+    if (!line.trim() || line.trimStart().startsWith('#')) {
+      index += 1;
+      continue;
+    }
+    check(
+      !/^[ \t]/.test(line),
+      `unsupported top-level frontmatter syntax on line ${index + 1}`,
+    );
+    const match = line.match(/^([A-Za-z][A-Za-z0-9-]*):(?:[ \t]*(.*))?$/);
+    check(match, `unsupported frontmatter syntax on line ${index + 1}`);
+    const [, key, value = ''] = match;
+    check(
+      !Object.hasOwn(frontmatter, key),
+      `duplicate frontmatter key "${key}" on line ${index + 1}`,
+    );
+
+    const blockIndicator = value.match(/^([>|])[-+]?$/);
+    if (blockIndicator) {
+      const { block, nextIndex } = readIndentedBlock(lines, index + 1, delimiter);
+      frontmatter[key] =
+        blockIndicator[1] === '|' ? block.join('\n').trim() : foldBlock(block);
+      index = nextIndex;
+      continue;
+    }
+
+    if (!value.trim()) {
+      const { block, nextIndex } = readIndentedBlock(lines, index + 1, delimiter);
+      frontmatter[key] = block.length ? block : null;
+      index = nextIndex;
+      continue;
+    }
+
+    const scalar = parseScalar(value, index + 1);
+    const { block, nextIndex } = readIndentedBlock(lines, index + 1, delimiter);
+    check(
+      !block.length || typeof scalar === 'string',
+      `frontmatter scalar on line ${index + 1} cannot use an indented continuation`,
+    );
+    frontmatter[key] = block.length ? foldBlock([scalar, ...block]) : scalar;
+    index = nextIndex;
   }
 
   return {
     frontmatter,
-    prompt: source.slice(delimiter + '\n---\n'.length),
+    prompt: lines.slice(delimiter + 1).join('\n'),
   };
 }
 
-function validateAgent(source, profile) {
+export function validateAgent(source, file) {
   const agent = parseProfile(source);
+  const name = agent.frontmatter.name;
   check(
-    agent.frontmatter.name === profile.name,
-    `${profile.name} name is invalid`,
+    typeof name === 'string' && name.trim() === file.replace(/\.agent\.md$/, ''),
+    `${file} name must match its filename`,
   );
   check(
     typeof agent.frontmatter.description === 'string' &&
       agent.frontmatter.description.trim(),
-    `${profile.name} description must be non-empty`,
+    `${name} description must be non-empty`,
   );
   check(
     agent.frontmatter['user-invocable'] === true,
-    `${profile.name} must be user-invocable`,
+    `${name} must be user-invocable`,
+  );
+  check(
+    agent.prompt.trim(),
+    `${name} prompt must be non-empty`,
   );
 
   const promptCharacters = Array.from(agent.prompt).length;
   const profileBytes = Buffer.byteLength(source);
   check(
     promptCharacters < MAX_PROMPT_CHARACTERS,
-    `${profile.name} prompt exceeds ${MAX_PROMPT_CHARACTERS} characters`,
+    `${name} prompt exceeds ${MAX_PROMPT_CHARACTERS} characters`,
   );
   check(
     profileBytes < MAX_PROFILE_BYTES,
-    `${profile.name} profile exceeds ${MAX_PROFILE_BYTES} bytes`,
+    `${name} profile exceeds ${MAX_PROFILE_BYTES} bytes`,
   );
-  for (const required of profile.required) {
-    check(source.includes(required), `${profile.name} must retain "${required}"`);
+  const requiredMarkers = [
+    ...REQUIRED_AGENT_PROMPT_MARKERS,
+    ...(REQUIRED_AGENT_PROMPT_MARKERS_BY_NAME.get(name) ?? []),
+  ];
+  for (const [marker, description] of requiredMarkers) {
+    check(agent.prompt.includes(marker), `${name} must retain ${description}`);
   }
 
-  return { name: profile.name, promptCharacters, profileBytes };
+  return { file, name, promptCharacters, profileBytes };
+}
+
+export async function validateAgentProfiles({ agentsRoot = AGENTS_ROOT, readmeSource }) {
+  check(typeof readmeSource === 'string', 'README source is required');
+  const agentFiles = (await readdir(agentsRoot, { withFileTypes: true }))
+    .filter(entry => entry.isFile() && entry.name.endsWith('.agent.md'))
+    .map(entry => entry.name)
+    .sort();
+  check(agentFiles.length > 0, 'at least one agent profile is required');
+
+  const results = await Promise.all(
+    agentFiles.map(async file =>
+      validateAgent(await readFile(join(agentsRoot, file), 'utf8'), file),
+    ),
+  );
+  for (const result of results) {
+    check(
+      readmeSource.includes(`](.github/agents/${result.file})`),
+      `README must discover ${result.name}`,
+    );
+  }
+  return results;
 }
 
 async function exists(path) {
@@ -222,7 +377,7 @@ async function validateParity(upstreamRoot, localCanonicalFiles) {
   );
 }
 
-async function main() {
+export async function main() {
   const [skillSource, licenseBytes, upstreamSource, readmeSource] =
     await Promise.all([
       readFile(SKILL_PATH, 'utf8'),
@@ -231,23 +386,7 @@ async function main() {
       readFile(README_PATH, 'utf8'),
     ]);
 
-  const agentFiles = (await readdir(AGENTS_ROOT))
-    .filter(file => file.endsWith('.agent.md'))
-    .sort();
-  const expectedAgentFiles = AGENT_PROFILES.map(profile => profile.file).sort();
-  check(
-    JSON.stringify(agentFiles) === JSON.stringify(expectedAgentFiles),
-    `agent inventory mismatch: expected ${expectedAgentFiles.join(', ')}`,
-  );
-
-  const agentResults = await Promise.all(
-    AGENT_PROFILES.map(async profile =>
-      validateAgent(
-        await readFile(join(AGENTS_ROOT, profile.file), 'utf8'),
-        profile,
-      ),
-    ),
-  );
+  const agentResults = await validateAgentProfiles({ readmeSource });
 
   const skill = parseProfile(skillSource);
   check(skill.frontmatter.name === 'hallmark', 'Hallmark name is invalid');
@@ -308,14 +447,6 @@ async function main() {
   }
 
   check(
-    readmeSource.includes('](.github/agents/EncodeDecodeAgent.agent.md)'),
-    'README must discover the primary agent',
-  );
-  check(
-    readmeSource.includes('](.github/agents/PlayfulWorkbenchAgent.agent.md)'),
-    'README must discover the playful agent',
-  );
-  check(
     readmeSource.includes('](.github/skills/hallmark/SKILL.md)'),
     'README must link to Hallmark',
   );
@@ -338,7 +469,9 @@ async function main() {
   }
 }
 
-main().catch(error => {
-  console.error(`NG: ${error.message}`);
-  process.exitCode = 1;
-});
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  main().catch(error => {
+    console.error(`NG: ${error.message}`);
+    process.exitCode = 1;
+  });
+}

@@ -67,11 +67,7 @@ button[aria-disabled="true"] {
 }
 
 .app-shell {
-  --active-halo: var(--color-cyan);
-  position: relative;
-  isolation: isolate;
   min-height: 100dvh;
-  overflow: clip;
   padding: var(--space-xl) var(--space-md);
   background:
     radial-gradient(
@@ -84,48 +80,6 @@ button[aria-disabled="true"] {
       var(--color-page-top) 0,
       var(--color-page) 32rem
     );
-}
-
-.app-shell::before,
-.app-shell::after {
-  position: absolute;
-  z-index: -1;
-  width: 22rem;
-  height: 22rem;
-  border-radius: 50%;
-  content: "";
-  filter: blur(7rem);
-  opacity: 0.16;
-  pointer-events: none;
-}
-
-.app-shell::before {
-  inset-block-start: 9rem;
-  inset-inline-end: -10rem;
-  background-color: var(--active-halo);
-  transition: background-color var(--dur-long) var(--ease-out);
-}
-
-.app-shell::after {
-  inset-block-end: -12rem;
-  inset-inline-start: -9rem;
-  background-color: var(--color-pear);
-}
-
-.app-shell[data-active-format="base64"] {
-  --active-halo: var(--color-pear);
-}
-
-.app-shell[data-active-format="jwt"] {
-  --active-halo: var(--color-coral);
-}
-
-.app-shell[data-active-format="unicode"] {
-  --active-halo: var(--color-lavender);
-}
-
-.app-shell[data-active-format="qr"] {
-  --active-halo: var(--color-mint);
 }
 
 .app-header,
@@ -1008,14 +962,11 @@ textarea[data-stale="true"] {
 
 @media (hover: hover) and (pointer: fine) {
   .utility-button:not(:disabled):not([aria-disabled="true"]):hover {
-    border-color: var(--color-cyan);
     background: color-mix(
       in oklch,
       var(--color-cyan-surface-hover) 78%,
       transparent
     );
-    color: var(--color-ink);
-    transform: translateY(-1px);
   }
 
   .tab-button:hover {
@@ -1032,15 +983,11 @@ textarea[data-stale="true"] {
   }
 
   .action-button:not(:disabled):not([aria-disabled="true"]):hover {
-    box-shadow:
-      0 6px 0 var(--btn-edge),
-      0 12px 22px -5px var(--btn-cast);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
   }
 
   .file-input::file-selector-button:hover {
-    box-shadow: 0 5px 0 var(--color-cyan-deep);
-    transform: translateY(-2px);
+    transform: translateY(-1px);
   }
 
   .decoded-link:hover {

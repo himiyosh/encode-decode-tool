@@ -134,10 +134,6 @@ const TransformPanel = ({ type, hidden }) => {
     });
     inputRef.current?.focus();
   };
-  const handleUseOutputClick = () => {
-    if (!outputIsStale) handleUseOutput();
-  };
-
   return (
     <section
       id={`panel-${id}`}
@@ -228,8 +224,8 @@ const TransformPanel = ({ type, hidden }) => {
               <button
                 type="button"
                 className="utility-button"
-                onClick={handleUseOutputClick}
-                aria-disabled={outputIsStale ? 'true' : undefined}
+                onClick={handleUseOutput}
+                disabled={outputIsStale}
                 aria-describedby={`${id}-status`}
               >
                 Use as input
