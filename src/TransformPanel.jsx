@@ -30,6 +30,7 @@ const TransformPanel = ({ type, hidden }) => {
   const [copyState, setCopyState] = useState('idle');
   const [outputSource, setOutputSource] = useState('');
   const copyResetTimer = useRef();
+  const copyRequestId = useRef(0);
   const inputRef = useRef(null);
   const meta = formatMeta[type];
   const id = type.toLowerCase();
@@ -43,13 +44,22 @@ const TransformPanel = ({ type, hidden }) => {
   );
 
   useEffect(
-    () => () => window.clearTimeout(copyResetTimer.current),
+    () => () => {
+      copyRequestId.current += 1;
+      window.clearTimeout(copyResetTimer.current);
+    },
     [],
   );
 
-  const updateInput = nextInput => {
-    setInput(nextInput);
+  const resetCopyFeedback = () => {
+    copyRequestId.current += 1;
+    window.clearTimeout(copyResetTimer.current);
     setCopyState('idle');
+  };
+
+  const updateInput = nextInput => {
+    resetCopyFeedback();
+    setInput(nextInput);
     const nextOutputIsStale = hasOutput && nextInput !== outputSource;
     setStatus({
       tone: nextOutputIsStale ? 'warning' : hasOutput ? 'success' : 'idle',
@@ -75,6 +85,7 @@ const TransformPanel = ({ type, hidden }) => {
   };
 
   const handleTransform = action => {
+    resetCopyFeedback();
     try {
       const result =
         action === 'encode' ? encodeValue(type, input) : decodeValue(type, input);
@@ -99,8 +110,12 @@ const TransformPanel = ({ type, hidden }) => {
   };
 
   const handleCopy = async () => {
+    const requestId = ++copyRequestId.current;
+    window.clearTimeout(copyResetTimer.current);
+    setCopyState('idle');
     try {
       await navigator.clipboard.writeText(output);
+      if (requestId !== copyRequestId.current) return;
       setCopyState('copied');
       setStatus({
         tone: 'success',
@@ -108,8 +123,11 @@ const TransformPanel = ({ type, hidden }) => {
         message: 'Output copied to the clipboard.',
       });
       window.clearTimeout(copyResetTimer.current);
-      copyResetTimer.current = window.setTimeout(() => setCopyState('idle'), 2500);
+      copyResetTimer.current = window.setTimeout(() => {
+        if (requestId === copyRequestId.current) setCopyState('idle');
+      }, 2500);
     } catch {
+      if (requestId !== copyRequestId.current) return;
       setCopyState('idle');
       setStatus({
         tone: 'error',
@@ -122,11 +140,11 @@ const TransformPanel = ({ type, hidden }) => {
   const outputIsStale = hasOutput && input !== outputSource;
   const inputInvalid = status.tone === 'error' && status.source === 'input';
   const handleUseOutput = () => {
+    resetCopyFeedback();
     setInput(output);
     setOutput('');
     setHasOutput(false);
     setOutputSource('');
-    setCopyState('idle');
     setStatus({
       tone: 'idle',
       source: 'input',

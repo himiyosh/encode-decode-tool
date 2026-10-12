@@ -13,7 +13,8 @@ This is a web-based tool for encoding and decoding text in various formats such 
 - Copy the output to the clipboard with a single click.
 - Download generated QR codes and decode QR images without uploading them.
 - Use the format tabs, transform controls, and file picker with a keyboard.
-- Round-trip empty and non-ASCII UTF-8 Base64 and Unicode input while rejecting
+- Round-trip empty and non-ASCII UTF-8 Base64 and Unicode input, including leading
+  U+FEFF characters in Base64 text, while rejecting
   malformed alphabets, non-scalar Unicode, and JWT numbers that would be rewritten
   during JSON decoding.
 - Limit JWT assembly to explicit unsecured (`alg: "none"`) tokens; decoding validates
@@ -22,7 +23,11 @@ This is a web-based tool for encoding and decoding text in various formats such 
   oversized images before allocating the processing canvas.
 - Keep previous results visible for comparison while preventing stale one-click
   copy or QR download after the source changes.
-- Use a playful multi-accent workbench with state-reactive motion and a complete reduced-motion alternative.
+- Keep copy confirmations attached to the current result and ignore outdated
+  clipboard completions or QR generation errors after input changes.
+- Use a playful multi-accent workbench with state-reactive motion. Reduced motion
+  displays decorative elements in their final positions immediately, including
+  generated QR images.
 - Prioritize the transformation controls on narrow screens while keeping the decorative signal stage on larger viewports.
 - Load a safe example for every format and see Unicode-aware character counts
   without leaving the current workflow.
@@ -45,6 +50,9 @@ Report suspected vulnerabilities privately by following the [security policy](.g
 - `npm run verify` runs tests, validates lockfile provenance and Copilot
   customizations, and creates the GitHub Pages site in `docs/`.
 - Install the Playwright Chromium binary once with `npx playwright install chromium`, then run `npm run test:e2e` for the focused real-browser regression suite. The suite builds and serves the production GitHub Pages output at `/encode-decode-tool/`.
+- Set `PLAYWRIGHT_CLIPBOARD_STUB=1` when running `npm run test:e2e` to check
+  clipboard state with an in-memory API without reading or overwriting the OS
+  clipboard. This mode does not verify real clipboard permissions or integration.
 - Every pull request and `main` push runs tests, lockfile provenance and customization checks, a production build, the Chromium E2E suite, a tracked `docs/` diff check, and a high-severity dependency audit in CI.
 - Dependabot groups compatible minor and patch updates for React, React DOM, and Lucide, keeps development tooling updates together, and leaves major migrations in separate pull requests for review.
 

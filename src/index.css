@@ -1126,7 +1126,12 @@ textarea[data-stale="true"] {
   .signal-buddy,
   .tool-panel:not([hidden]),
   .qr-preview img {
+    animation-name: none;
     transform: none;
+  }
+
+  .signal-buddy {
+    transform: translate(-50%, -50%);
   }
 
   .action-button:not(:disabled):hover,

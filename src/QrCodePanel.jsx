@@ -31,6 +31,7 @@ const QrCodePanel = ({ hidden }) => {
   const [copyState, setCopyState] = useState('idle');
   const canvasRef = useRef(null);
   const copyResetTimer = useRef();
+  const copyRequestId = useRef(0);
   const decodeRequestId = useRef(0);
   const generateRequestId = useRef(0);
   const textRef = useRef('');
@@ -61,6 +62,7 @@ const QrCodePanel = ({ hidden }) => {
 
   useEffect(
     () => () => {
+      copyRequestId.current += 1;
       window.clearTimeout(copyResetTimer.current);
       decodeRequestId.current += 1;
       generateRequestId.current += 1;
@@ -69,8 +71,15 @@ const QrCodePanel = ({ hidden }) => {
     [],
   );
 
+  const resetCopyFeedback = () => {
+    copyRequestId.current += 1;
+    window.clearTimeout(copyResetTimer.current);
+    setCopyState('idle');
+  };
+
   const generateQR = async () => {
     if (!text || generating) return;
+    resetCopyFeedback();
     const sourceText = text;
     const requestId = ++generateRequestId.current;
     setGenerating(true);
@@ -90,7 +99,10 @@ const QrCodePanel = ({ hidden }) => {
           : 'QR code generated and ready to download.',
       });
     } catch (error) {
-      if (requestId !== generateRequestId.current) return;
+      if (
+        requestId !== generateRequestId.current ||
+        sourceText !== textRef.current
+      ) return;
       setImgSrc('');
       setGeneratedText('');
       setStatus({
@@ -111,12 +123,12 @@ const QrCodePanel = ({ hidden }) => {
     const input = e.currentTarget;
     const file = input.files?.[0];
     if (!file) return;
+    resetCopyFeedback();
     input.value = '';
     const requestId = ++decodeRequestId.current;
     cancelPendingImage();
     setDecoded('');
     setHasDecoded(false);
-    setCopyState('idle');
 
     if (file.size > MAX_QR_IMAGE_BYTES) {
       setStatus({
@@ -261,8 +273,12 @@ const QrCodePanel = ({ hidden }) => {
   };
 
   const copyDecoded = async () => {
+    const requestId = ++copyRequestId.current;
+    window.clearTimeout(copyResetTimer.current);
+    setCopyState('idle');
     try {
       await navigator.clipboard.writeText(decoded);
+      if (requestId !== copyRequestId.current) return;
       setCopyState('copied');
       setStatus({
         tone: 'success',
@@ -270,8 +286,11 @@ const QrCodePanel = ({ hidden }) => {
         message: 'Decoded text copied to the clipboard.',
       });
       window.clearTimeout(copyResetTimer.current);
-      copyResetTimer.current = window.setTimeout(() => setCopyState('idle'), 2500);
+      copyResetTimer.current = window.setTimeout(() => {
+        if (requestId === copyRequestId.current) setCopyState('idle');
+      }, 2500);
     } catch {
+      if (requestId !== copyRequestId.current) return;
       setCopyState('idle');
       setStatus({
         tone: 'error',
@@ -282,6 +301,7 @@ const QrCodePanel = ({ hidden }) => {
   };
 
   const updateQrText = nextText => {
+    resetCopyFeedback();
     textRef.current = nextText;
     setText(nextText);
     const nextQrIsStale = Boolean(imgSrc && nextText !== generatedText);
