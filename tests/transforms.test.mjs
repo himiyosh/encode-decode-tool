@@ -111,6 +111,20 @@ test('URL and UTF-8 Base64 reject unmatched surrogates before lossy encoding', (
   assert.throws(() => encodeValue('Base64', '\udc00'), /invalid-unicode-text/);
 });
 
+test('URL decoding normalizes malformed percent-encoding to a stable error', () => {
+  for (const value of ['%', '%A', '%ZZ', '%E0%A4', 'valid%2Gtail']) {
+    assert.throws(() => decodeValue('URL', value), /invalid-url-encoding/);
+  }
+  assert.match(
+    getTransformErrorMessage(
+      'URL',
+      'decode',
+      new Error('invalid-url-encoding'),
+    ),
+    /not valid percent-encoded content/,
+  );
+});
+
 test('Base64 and Unicode round-trip empty input', () => {
   assert.equal(encodeValue('Base64', ''), '');
   assert.equal(decodeValue('Base64', ''), '');
@@ -125,6 +139,18 @@ test('Base64 accepts unpadded and wrapped input', () => {
   assert.equal(decodeValue('Base64', 'SGVs\nbG8='), 'Hello');
 });
 
+test('Base64 preserves U+FEFF at every text boundary', () => {
+  for (const value of [
+    '\ufeffA',
+    '\ufeff',
+    '\ufeff\ufeffA',
+    'A\ufeffB',
+    'A\ufeff',
+  ]) {
+    assert.equal(decodeValue('Base64', encodeValue('Base64', value)), value);
+  }
+});
+
 test('Base64 handles long input without argument or stack limits', () => {
   const value = 'Hello 👋 世界 '.repeat(10_000);
   assert.equal(decodeValue('Base64', encodeValue('Base64', value)), value);
@@ -136,6 +162,14 @@ test('Base64 rejects malformed, non-canonical, and invalid UTF-8 input', () => {
   assert.throws(() => decodeValue('Base64', 'Zh=='), /invalid-base64/);
   assert.throws(() => decodeValue('Base64', 'SGVs\u00a0bG8='), /invalid-base64/);
   assert.throws(() => decodeValue('Base64', '/w=='), /invalid-utf8/);
+  assert.throws(
+    () =>
+      decodeValue(
+        'Base64',
+        Buffer.from([0xef, 0xbb, 0xbf, 0xff]).toString('base64'),
+      ),
+    /invalid-utf8/,
+  );
 });
 
 test('Unicode conversion preserves scalar values and rejects surrogates', () => {
@@ -165,6 +199,47 @@ test('JWT encoding only assembles explicitly unsecured tokens', () => {
         JSON.stringify({ header: { alg: 'HS256' }, payload: {} }),
       ),
     /invalid-jwt-json/,
+  );
+});
+
+test('JWT decoding keeps existing BOM-prefixed JSON segment compatibility', () => {
+  for (const [headerPrefix, payloadPrefix] of [
+    ['\ufeff', ''],
+    ['', '\ufeff'],
+    ['\ufeff', '\ufeff'],
+  ]) {
+    const header = { alg: 'none' };
+    const payload = { text: '\ufeff世界', value: 0.125 };
+    const token = makeJwt(
+      `${headerPrefix}${JSON.stringify(header)}`,
+      `${payloadPrefix}${JSON.stringify(payload)}`,
+    );
+
+    assert.deepEqual(JSON.parse(decodeValue('JWT', token)), {
+      header,
+      payload,
+      signature: '',
+    });
+  }
+});
+
+test('JWT BOM handling still rejects invalid UTF-8 and unstable numbers', () => {
+  const invalidUtf8 = Buffer.from([0xef, 0xbb, 0xbf, 0xff]).toString('base64url');
+  const validHeader = Buffer.from('{"alg":"none"}').toString('base64url');
+  const validPayload = Buffer.from('{}').toString('base64url');
+  for (const token of [
+    `${invalidUtf8}.${validPayload}.`,
+    `${validHeader}.${invalidUtf8}.`,
+  ]) {
+    assert.throws(() => decodeValue('JWT', token), /invalid-utf8/);
+  }
+  assert.throws(
+    () =>
+      decodeValue(
+        'JWT',
+        makeJwt('\ufeff{"alg":"none"}', '\ufeff{"value":9007199254740993}'),
+      ),
+    /invalid-jwt-number/,
   );
 });
 

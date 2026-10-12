@@ -1,5 +1,9 @@
 const utf8Encoder = new TextEncoder();
 const utf8Decoder = new TextDecoder('utf-8', { fatal: true });
+const utf8Base64Decoder = new TextDecoder('utf-8', {
+  fatal: true,
+  ignoreBOM: true,
+});
 const jsonNumberPattern =
   /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
 
@@ -155,7 +159,7 @@ const encodeUtf8Base64 = value => {
 
 const decodeUtf8Base64 = value => {
   try {
-    return utf8Decoder.decode(decodeBase64Bytes(value));
+    return utf8Base64Decoder.decode(decodeBase64Bytes(value));
   } catch (error) {
     if (error instanceof TypeError) {
       throw new Error('invalid-utf8');
@@ -233,7 +237,11 @@ export const encodeValue = (type, input) => {
 export const decodeValue = (type, input) => {
   switch (type) {
     case 'URL':
-      return decodeURIComponent(input);
+      try {
+        return decodeURIComponent(input);
+      } catch {
+        throw new Error('invalid-url-encoding');
+      }
     case 'Base64':
       return decodeUtf8Base64(input);
     case 'Unicode': {

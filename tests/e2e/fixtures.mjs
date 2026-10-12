@@ -4,8 +4,22 @@ import { APP_URL } from '../../playwright.config.mjs';
 
 const APP_ORIGIN = new URL(APP_URL).origin;
 
+const defineMemoryClipboard = () => {
+  let clipboardText = '';
+  Object.defineProperty(navigator, 'clipboard', {
+    configurable: true,
+    value: {
+      writeText: async text => { clipboardText = text; },
+      readText: async () => clipboardText,
+    },
+  });
+};
+
 export const test = base.extend({
   page: async ({ page }, use) => {
+    if (process.env.PLAYWRIGHT_CLIPBOARD_STUB === '1') {
+      await page.addInitScript(defineMemoryClipboard);
+    }
     const consoleErrors = [];
     const pageErrors = [];
     const crossOriginRequests = [];
@@ -31,6 +45,7 @@ export const test = base.extend({
 });
 
 export { expect } from '@playwright/test';
+export const useMemoryClipboard = page => page.evaluate(defineMemoryClipboard);
 
 export const openApp = async page => {
   await page.goto('./');
